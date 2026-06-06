@@ -9,7 +9,7 @@ async function callClaude(messages, system) {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, system, messages }),
+        body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 400, system, messages }),
       });
       const d = await res.json();
       if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
