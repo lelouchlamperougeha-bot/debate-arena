@@ -350,12 +350,14 @@ export default function App(){
           </div>
           {topics.map(t=>(
             <button key={t.label} className="hov" onClick={()=>{setTopic(t.label);setCustom("");}}
-              style={{flex:1,background:topic===t.label&&!custom?"#1e1c2e":"#0f0f16",border:topic===t.label&&!custom?"1.5px solid #534AB7":BDR,borderRadius:10,padding:"16px",fontFamily:"sans-serif",color:topic===t.label&&!custom?"#b8b0f0":"#c0bdb8",textAlign:"left",cursor:"pointer",display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,color:"#7a7870",fontWeight:500}}>{t.cat}</span>
-                <span style={{fontSize:13,color:DC[t.d],fontWeight:700}}>{DL[t.d]}</span>
+              style={{flex:1,background:topic===t.label&&!custom?"#1e1c2e":"#0f0f16",border:topic===t.label&&!custom?"1.5px solid #534AB7":BDR,borderRadius:10,padding:"16px",fontFamily:"sans-serif",color:topic===t.label&&!custom?"#b8b0f0":"#c0bdb8",cursor:"pointer",display:"flex",flexDirection:"column",position:"relative"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <span style={{fontSize:12,color:"#5a5850",fontFamily:"sans-serif"}}>{t.cat}</span>
+                <span style={{fontSize:12,color:DC[t.d],fontWeight:700,fontFamily:"sans-serif"}}>{DL[t.d]}</span>
               </div>
-              <span style={{fontSize:17,lineHeight:1.45,fontWeight:500}}>{t.label}</span>
+              <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"0 8px"}}>
+                <span style={{fontSize:18,lineHeight:1.5,fontWeight:600}}>{t.label}</span>
+              </div>
             </button>
           ))}
           <div>
