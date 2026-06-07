@@ -350,26 +350,27 @@ export default function App(){
           </div>
           {topics.map(t=>(
             <button key={t.label} className="hov" onClick={()=>{setTopic(t.label);setCustom("");}}
-              style={{flex:1,background:topic===t.label&&!custom?"#1e1c2e":"#0f0f16",border:topic===t.label&&!custom?"1.5px solid #534AB7":BDR,borderRadius:10,padding:"16px",fontFamily:"sans-serif",color:topic===t.label&&!custom?"#b8b0f0":"#c0bdb8",textAlign:"left",cursor:"pointer",display:"flex",flexDirection:"column",justifyContent:"center",gap:8}}>
-              <div style={{display:"flex",justifyContent:"space-between"}}>
-                <span style={{fontSize:14,color:"#7a7870",fontWeight:500}}>{t.cat}</span>
-                <span style={{fontSize:14,color:DC[t.d],fontWeight:700}}>{DL[t.d]}</span>
+              style={{flex:1,background:topic===t.label&&!custom?"#1e1c2e":"#0f0f16",border:topic===t.label&&!custom?"1.5px solid #534AB7":BDR,borderRadius:10,padding:"16px",fontFamily:"sans-serif",color:topic===t.label&&!custom?"#b8b0f0":"#c0bdb8",textAlign:"left",cursor:"pointer",display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:13,color:"#7a7870",fontWeight:500}}>{t.cat}</span>
+                <span style={{fontSize:13,color:DC[t.d],fontWeight:700}}>{DL[t.d]}</span>
               </div>
               <span style={{fontSize:17,lineHeight:1.45,fontWeight:500}}>{t.label}</span>
             </button>
           ))}
           <div>
-            <div style={{fontSize:12,color:"#6b6860",fontFamily:"sans-serif",marginBottom:6}}>Or type your own:</div>
+            <div style={{fontSize:14,color:"#6b6860",fontFamily:"sans-serif",marginBottom:8}}>Or type your own:</div>
             <input value={custom} onChange={e=>{setCustom(e.target.value);setTopic("");}} placeholder="Enter any topic…"
-              style={{width:"100%",background:"#0f0f16",border:BDR,borderRadius:8,padding:"12px 14px",fontSize:14,fontFamily:"sans-serif",color:"#e8e4dc"}}/>
+              style={{width:"100%",background:"#0f0f16",border:BDR,borderRadius:10,padding:"16px 18px",fontSize:17,fontFamily:"sans-serif",color:"#e8e4dc"}}/>
           </div>
-          <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+          <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"center",justifyContent:"center"}}>
             {Object.entries(DL).map(([d,l])=>(
-              <div key={d} style={{display:"flex",alignItems:"center",gap:4}}>
-                <span style={{width:8,height:8,borderRadius:"50%",background:DC[d],display:"inline-block"}}/>
+              <div key={d} style={{display:"flex",alignItems:"center",gap:5}}>
+                <span style={{width:9,height:9,borderRadius:"50%",background:DC[d],display:"inline-block"}}/>
                 <span style={{fontSize:14,color:"#9a9690",fontFamily:"sans-serif"}}>{l}</span>
               </div>
             ))}
+            <span style={{fontSize:13,color:"#4a4840",fontFamily:"sans-serif"}}>= difficulty</span>
           </div>
         </div>
 
@@ -414,20 +415,22 @@ export default function App(){
               ))}
             </div>
           )}
-          <div style={{flex:1,background:"#0f0f16",border:BDR,borderRadius:12,padding:"32px",display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
-            <div style={{fontSize:12,fontWeight:700,color:G,fontFamily:"sans-serif",marginBottom:28,textTransform:"uppercase",letterSpacing:".1em"}}>How Scoring Works</div>
+          <div style={{flex:1,background:"#0f0f16",border:BDR,borderRadius:12,padding:"32px",display:"flex",flexDirection:"column"}}>
+            <div style={{fontSize:12,fontWeight:700,color:G,fontFamily:"sans-serif",marginBottom:0,textTransform:"uppercase",letterSpacing:".1em",textAlign:"center"}}>How Scoring Works</div>
+            <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"space-evenly"}}>
             {[["🟢","Strong (8-10)","#4ade80","You gain the most points"],
               ["🟡","Solid (6-7)","#c9a84c","You gain some points"],
               ["🟠","Weak (4-5)","#fb923c","You break even"],
               ["🔴","Poor (1-3)","#f87171","You lose points"]].map(([dot,label,col,explain])=>(
-              <div key={label} style={{display:"flex",alignItems:"center",gap:16,flex:1,alignSelf:"stretch",padding:"10px 0",borderBottom:"1px solid #1a1a24"}}>
-                <span style={{fontSize:26,flexShrink:0}}>{dot}</span>
+              <div key={label} style={{display:"flex",alignItems:"center",gap:18,padding:"14px 0",borderBottom:"1px solid #1a1a24"}}>
+                <span style={{fontSize:28,flexShrink:0}}>{dot}</span>
                 <div>
-                  <div style={{fontSize:17,color:col,fontFamily:"sans-serif",fontWeight:700}}>{label}</div>
-                  <div style={{fontSize:14,color:"#c0bdb8",fontFamily:"sans-serif",marginTop:4}}>{explain}</div>
+                  <div style={{fontSize:18,color:col,fontFamily:"sans-serif",fontWeight:700}}>{label}</div>
+                  <div style={{fontSize:15,color:"#c0bdb8",fontFamily:"sans-serif",marginTop:5}}>{explain}</div>
                 </div>
               </div>
             ))}
+            </div>
           </div>
           <button disabled={!act||!side} className={act&&side?"bhov":""} onClick={startDebate}
             style={{flexShrink:0,width:"100%",padding:"22px",background:act&&side?G:"#1a1a24",color:act&&side?"#0a0a0f":"#444",border:"none",borderRadius:12,fontSize:19,fontWeight:700,fontFamily:"sans-serif",letterSpacing:".05em",cursor:act&&side?"pointer":"not-allowed",transition:"all .2s"}}>
