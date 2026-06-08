@@ -351,51 +351,51 @@ export default function App(){
           {topics.map(t=>(
             <button key={t.label} className="hov" onClick={()=>{setTopic(t.label);setCustom("");}}
               style={{flex:1,background:topic===t.label&&!custom?"#1e1c2e":"#0f0f16",border:topic===t.label&&!custom?"1.5px solid #534AB7":BDR,borderRadius:10,padding:"16px",fontFamily:"sans-serif",color:topic===t.label&&!custom?"#b8b0f0":"#c0bdb8",cursor:"pointer",display:"flex",flexDirection:"column",position:"relative"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                <span style={{fontSize:12,color:"#5a5850",fontFamily:"sans-serif"}}>{t.cat}</span>
-                <span style={{fontSize:12,color:DC[t.d],fontWeight:700,fontFamily:"sans-serif"}}>{DL[t.d]}</span>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <span style={{fontSize:15,color:"#6a6860",fontFamily:"sans-serif",fontWeight:500}}>{t.cat}</span>
+                <span style={{fontSize:15,color:DC[t.d],fontWeight:700,fontFamily:"sans-serif"}}>{DL[t.d]}</span>
               </div>
               <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"0 8px"}}>
-                <span style={{fontSize:18,lineHeight:1.5,fontWeight:600}}>{t.label}</span>
+                <span style={{fontSize:22,lineHeight:1.5,fontWeight:600}}>{t.label}</span>
               </div>
             </button>
           ))}
           <div>
-            <div style={{fontSize:14,color:"#6b6860",fontFamily:"sans-serif",marginBottom:8}}>Or type your own:</div>
+            <div style={{fontSize:15,color:"#6b6860",fontFamily:"sans-serif",marginBottom:8}}>Or type your own:</div>
             <input value={custom} onChange={e=>{setCustom(e.target.value);setTopic("");}} placeholder="Enter any topic…"
-              style={{width:"100%",background:"#0f0f16",border:BDR,borderRadius:10,padding:"16px 18px",fontSize:17,fontFamily:"sans-serif",color:"#e8e4dc"}}/>
+              style={{width:"100%",background:"#0f0f16",border:BDR,borderRadius:10,padding:"18px 20px",fontSize:19,fontFamily:"sans-serif",color:"#e8e4dc"}}/>
           </div>
           <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"center",justifyContent:"center"}}>
             {Object.entries(DL).map(([d,l])=>(
               <div key={d} style={{display:"flex",alignItems:"center",gap:5}}>
                 <span style={{width:9,height:9,borderRadius:"50%",background:DC[d],display:"inline-block"}}/>
-                <span style={{fontSize:14,color:"#9a9690",fontFamily:"sans-serif"}}>{l}</span>
+                <span style={{fontSize:15,color:"#9a9690",fontFamily:"sans-serif"}}>{l}</span>
               </div>
             ))}
-            <span style={{fontSize:13,color:"#4a4840",fontFamily:"sans-serif"}}>= difficulty</span>
+            <span style={{fontSize:15,color:"#4a4840",fontFamily:"sans-serif"}}>= difficulty</span>
           </div>
         </div>
 
         {/* MIDDLE */}
         <div style={{flex:1,borderRight:BDR,display:"flex",flexDirection:"column",padding:"24px 32px",gap:12}}>
-          <div style={{fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,fontFamily:"sans-serif"}}>Your Side</div>
+          <div style={{fontSize:13,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,fontFamily:"sans-serif"}}>Your Side</div>
           {[["for","👍","I'm FOR it","You argue in favor — Claude argues against"],
             ["against","👎","I'm AGAINST it","You argue against — Claude argues in favor"]].map(([v,ic,ti,de])=>(
             <div key={v} className="hov" onClick={()=>setSide(v)}
               style={{flex:1,background:side===v?"#1e1c2e":"#0f0f16",border:side===v?"1.5px solid #534AB7":BDR,borderRadius:12,padding:"20px",cursor:"pointer",display:"flex",alignItems:"center",gap:16}}>
-              <span style={{fontSize:36}}>{ic}</span>
+              <span style={{fontSize:44}}>{ic}</span>
               <div>
-                <div style={{fontSize:18,fontWeight:700,color:"#e8e4dc",fontFamily:"sans-serif"}}>{ti}</div>
-                <div style={{fontSize:14,color:"#9a9690",fontFamily:"sans-serif",marginTop:4}}>{de}</div>
+                <div style={{fontSize:22,fontWeight:700,color:"#e8e4dc",fontFamily:"sans-serif"}}>{ti}</div>
+                <div style={{fontSize:16,color:"#9a9690",fontFamily:"sans-serif",marginTop:6}}>{de}</div>
               </div>
             </div>
           ))}
-          <div style={{fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,fontFamily:"sans-serif"}}>Debate Style</div>
+          <div style={{fontSize:13,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,fontFamily:"sans-serif"}}>Debate Style</div>
           {Object.entries(INTENSITY).map(([k,{label,desc}])=>(
             <button key={k} className="hov" onClick={()=>setIntensity(k)}
               style={{flex:1,background:intensity===k?"#1a1208":"#0f0f16",border:intensity===k?`1.5px solid ${G}`:BDR,borderRadius:9,padding:"20px",fontSize:16,fontFamily:"sans-serif",color:intensity===k?G:"#c0bdb8",textAlign:"left",cursor:"pointer",display:"flex",flexDirection:"column",justifyContent:"center",gap:4}}>
-              <div style={{fontWeight:700}}>{label}</div>
-              <div style={{fontSize:13,color:intensity===k?"#c9a84c88":"#6b6860"}}>{desc}</div>
+              <div style={{fontSize:20,fontWeight:700}}>{label}</div>
+              <div style={{fontSize:16,color:intensity===k?"#c9a84c99":"#6b6860",marginTop:4}}>{desc}</div>
             </button>
           ))}
         </div>
@@ -403,7 +403,7 @@ export default function App(){
         {/* RIGHT */}
         <div style={{flex:1,display:"flex",flexDirection:"column",padding:"24px 32px",gap:12}}>
           <button onClick={()=>setShowTraits(s=>!s)}
-            style={{background:"none",border:"none",cursor:"pointer",color:G,fontSize:11,fontFamily:"sans-serif",fontWeight:700,textTransform:"uppercase",letterSpacing:".12em",padding:0,display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+            style={{background:"none",border:"none",cursor:"pointer",color:G,fontSize:14,fontFamily:"sans-serif",fontWeight:700,textTransform:"uppercase",letterSpacing:".12em",padding:0,display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
             {showTraits?"▾":"▸"} Customize Claude's Style
           </button>
           {showTraits&&(
@@ -418,24 +418,24 @@ export default function App(){
             </div>
           )}
           <div style={{flex:1,background:"#0f0f16",border:BDR,borderRadius:12,padding:"32px",display:"flex",flexDirection:"column"}}>
-            <div style={{fontSize:12,fontWeight:700,color:G,fontFamily:"sans-serif",marginBottom:0,textTransform:"uppercase",letterSpacing:".1em",textAlign:"center"}}>How Scoring Works</div>
+            <div style={{fontSize:14,fontWeight:700,color:G,fontFamily:"sans-serif",marginBottom:0,textTransform:"uppercase",letterSpacing:".1em",textAlign:"center"}}>How Scoring Works</div>
             <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"space-evenly"}}>
             {[["🟢","Strong (8-10)","#4ade80","You gain the most points"],
               ["🟡","Solid (6-7)","#c9a84c","You gain some points"],
               ["🟠","Weak (4-5)","#fb923c","You break even"],
               ["🔴","Poor (1-3)","#f87171","You lose points"]].map(([dot,label,col,explain])=>(
               <div key={label} style={{display:"flex",alignItems:"center",gap:18,padding:"14px 0",borderBottom:"1px solid #1a1a24"}}>
-                <span style={{fontSize:28,flexShrink:0}}>{dot}</span>
+                <span style={{fontSize:34,flexShrink:0}}>{dot}</span>
                 <div>
-                  <div style={{fontSize:18,color:col,fontFamily:"sans-serif",fontWeight:700}}>{label}</div>
-                  <div style={{fontSize:15,color:"#c0bdb8",fontFamily:"sans-serif",marginTop:5}}>{explain}</div>
+                  <div style={{fontSize:21,color:col,fontFamily:"sans-serif",fontWeight:700}}>{label}</div>
+                  <div style={{fontSize:17,color:"#c0bdb8",fontFamily:"sans-serif",marginTop:6}}>{explain}</div>
                 </div>
               </div>
             ))}
             </div>
           </div>
           <button disabled={!act||!side} className={act&&side?"bhov":""} onClick={startDebate}
-            style={{flexShrink:0,width:"100%",padding:"22px",background:act&&side?G:"#1a1a24",color:act&&side?"#0a0a0f":"#444",border:"none",borderRadius:12,fontSize:19,fontWeight:700,fontFamily:"sans-serif",letterSpacing:".05em",cursor:act&&side?"pointer":"not-allowed",transition:"all .2s"}}>
+            style={{flexShrink:0,width:"100%",padding:"24px",background:act&&side?G:"#1a1a24",color:act&&side?"#0a0a0f":"#444",border:"none",borderRadius:12,fontSize:21,fontWeight:700,fontFamily:"sans-serif",letterSpacing:".05em",cursor:act&&side?"pointer":"not-allowed",transition:"all .2s"}}>
             {act&&side?"⚔️  ENTER THE ARENA":"Select a topic & side first"}
           </button>
         </div>
