@@ -2,6 +2,16 @@ import { useState, useRef, useEffect } from "react";
 
 const G="#c9a84c", BDR="1px solid #2a2a35";
 
+// Time limits per level (seconds)
+const LEVEL_TIME = {
+  "Novice": 90,
+  "Debater": 75,
+  "Rhetorician": 60,
+  "Sophist": 45,
+  "Orator": 35,
+  "Philosopher King": 25,
+};
+
 async function callClaude(messages, system) {
   for (let i = 0; i < 3; i++) {
     try {
@@ -29,7 +39,6 @@ const LEVELS=[
   {name:"Philosopher King",min:3600, max:Infinity,  icon:"👑",  color:"#c9a84c", unlock:"All topics"},
 ];
 
-// Fixed category icons — consistent and sensible
 const ALL_TOPICS=[
   {label:"Pineapple belongs on pizza",                              d:1,cat:"🍕 Food"},
   {label:"Cats are better pets than dogs",                          d:1,cat:"🐾 Pets"},
@@ -138,7 +147,6 @@ const getMaxDiff=r=>r<400?2:r<900?3:r<2500?4:5;
 const loadSt=()=>{try{const s=localStorage.getItem("da_v4");return s?JSON.parse(s):null;}catch{return null;}};
 const saveSt=s=>{try{localStorage.setItem("da_v4",JSON.stringify(s));}catch{}};
 
-// Pick 4 topics ensuring no duplicate categories
 function pickTopics(rating, exclude=[]) {
   const max = getMaxDiff(rating);
   const sh = a => [...a].sort(() => Math.random() - 0.5);
@@ -146,28 +154,22 @@ function pickTopics(rating, exclude=[]) {
   const pool = full.filter(t => !exclude.includes(t.label));
   const src = pool.length >= 8 ? pool : full;
   const shuffled = sh(src);
-  const pick = [];
-  const usedCats = new Set();
-  // First pass: one per category
+  const pick = [], usedCats = new Set();
   for (const t of shuffled) {
     if (pick.length >= 4) break;
-    const baseCat = t.cat.split(" ").slice(1).join(" "); // strip emoji
-    if (!usedCats.has(baseCat)) {
-      pick.push(t);
-      usedCats.add(baseCat);
-    }
+    const base = t.cat.split(" ").slice(1).join(" ");
+    if (!usedCats.has(base)) { pick.push(t); usedCats.add(base); }
   }
-  // Fill if needed
-  const used = new Set(pick.map(t => t.label));
-  const rem = sh(src.filter(t => !used.has(t.label)));
+  const used = new Set(pick.map(t=>t.label));
+  const rem = sh(src.filter(t=>!used.has(t.label)));
   while (pick.length < 4 && rem.length) pick.push(rem.shift());
-  return sh(pick).slice(0, 4);
+  return sh(pick).slice(0,4);
 }
 
 function PulsingOrb(){
   return(
-    <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",background:"#1a1a24",border:BDR,borderRadius:"16px 16px 16px 4px",width:"fit-content"}}>
-      <div style={{position:"relative",width:20,height:20}}>
+    <div style={{display:"flex",alignItems:"center",gap:14,padding:"16px 20px",background:"rgba(26,26,36,0.95)",border:BDR,borderRadius:"18px 18px 18px 4px",width:"fit-content",backdropFilter:"blur(8px)"}}>
+      <div style={{position:"relative",width:22,height:22}}>
         <div style={{position:"absolute",inset:0,borderRadius:"50%",background:G,animation:"pR 1.4s ease-out infinite"}}/>
         <div style={{position:"absolute",inset:5,borderRadius:"50%",background:G,animation:"pC 1.4s ease-in-out infinite"}}/>
       </div>
@@ -178,13 +180,42 @@ function PulsingOrb(){
 
 function LevelUpModal({level,onClose}){
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.88)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>
-      <div style={{background:"#13131a",border:`2px solid ${level.color}`,borderRadius:24,padding:"3rem 2.5rem",textAlign:"center",maxWidth:380}}>
-        <div style={{fontSize:64,marginBottom:16}}>{level.icon}</div>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>
+      <div style={{background:"#13131a",border:`2px solid ${level.color}`,borderRadius:24,padding:"3rem 2.5rem",textAlign:"center",maxWidth:400,boxShadow:`0 0 60px ${level.color}44`}}>
+        <div style={{fontSize:72,marginBottom:16}}>{level.icon}</div>
         <div style={{fontSize:13,letterSpacing:".2em",textTransform:"uppercase",color:level.color,fontFamily:"sans-serif",marginBottom:10}}>Level Up!</div>
-        <div style={{fontSize:30,fontWeight:900,color:"#e8e4dc",marginBottom:10}}>{level.name}</div>
-        <div style={{fontSize:16,color:"#9a9690",fontFamily:"sans-serif"}}>Unlocked: <span style={{color:level.color}}>{level.unlock}</span></div>
-        <button onClick={onClose} style={{marginTop:24,padding:"13px 32px",background:level.color,color:"#0a0a0f",border:"none",borderRadius:10,fontSize:16,fontWeight:700,fontFamily:"sans-serif",cursor:"pointer"}}>Keep Going</button>
+        <div style={{fontSize:32,fontWeight:900,color:"#e8e4dc",marginBottom:10}}>{level.name}</div>
+        <div style={{fontSize:17,color:"#9a9690",fontFamily:"sans-serif"}}>Unlocked: <span style={{color:level.color}}>{level.unlock}</span></div>
+        <button onClick={onClose} style={{marginTop:24,padding:"14px 36px",background:level.color,color:"#0a0a0f",border:"none",borderRadius:10,fontSize:17,fontWeight:700,fontFamily:"sans-serif",cursor:"pointer"}}>Keep Going</button>
+      </div>
+    </div>
+  );
+}
+
+function Timer({seconds, onExpire}){
+  const [left, setLeft] = useState(seconds);
+  const ref = useRef(null);
+  useEffect(()=>{
+    setLeft(seconds);
+    ref.current = setInterval(()=>{
+      setLeft(s=>{
+        if(s<=1){ clearInterval(ref.current); onExpire(); return 0; }
+        return s-1;
+      });
+    },1000);
+    return ()=>clearInterval(ref.current);
+  },[seconds]);
+  const pct = (left/seconds)*100;
+  const col = left>seconds*0.5?"#4ade80":left>seconds*0.25?"#c9a84c":"#f87171";
+  const mins = Math.floor(left/60);
+  const secs = left%60;
+  return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+      <div style={{fontSize:28,fontWeight:900,color:col,fontFamily:"sans-serif",fontVariantNumeric:"tabular-nums",minWidth:60,textAlign:"center"}}>
+        {mins>0?`${mins}:${String(secs).padStart(2,"0")}`:secs}
+      </div>
+      <div style={{width:60,height:5,background:"#2a2a35",borderRadius:3,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${pct}%`,background:col,borderRadius:3,transition:"width 1s linear",boxShadow:`0 0 6px ${col}88`}}/>
       </div>
     </div>
   );
@@ -214,6 +245,8 @@ export default function App(){
   const [summary,setSummary]       = useState("");
   const [sumLoading,setSumLoading] = useState(false);
   const [lvlModal,setLvlModal]     = useState(null);
+  const [timerKey,setTimerKey]     = useState(0);
+  const [timerActive,setTimerActive] = useState(false);
   const chatRef = useRef(null);
 
   const act   = custom.trim()||topic;
@@ -224,6 +257,7 @@ export default function App(){
   const delta = prevRating!==null?rating-prevRating:null;
   const sc    = s=>s>=8?"#4ade80":s>=6?G:s>=4?"#fb923c":"#f87171";
   const sl    = s=>s>=8?"Strong":s>=6?"Solid":s>=4?"Weak":"Poor";
+  const timeLimit = LEVEL_TIME[level.name] || 60;
 
   useEffect(()=>{saveSt({rating,trophies});},[rating,trophies]);
   useEffect(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight;},[msgs,loading,summary]);
@@ -234,13 +268,11 @@ export default function App(){
   const buildSys=()=>{
     const cs  = side==="for"?"against":"for";
     const td  = traits.map(id=>TRAITS.find(t=>t.id===id)?.desc).filter(Boolean).join(". ");
-    const lvl = level.name;
-    // Difficulty calibration based on user level
-    const diffNote = lvl==="Novice"
-      ? "IMPORTANT: The user is a beginner debater. Use simple, everyday language. Make occasional logical mistakes or weak arguments that a careful reader could spot — this is intentional to help them practice. Avoid academic jargon, complex vocabulary, or overly sophisticated rhetorical moves. Keep it conversational."
-      : lvl==="Debater"
-      ? "The user has some debate experience. Use clear arguments but you may occasionally leave a small logical gap for them to find."
-      : "The user is an experienced debater. Argue sharply and rigorously.";
+    const diffNote = level.name==="Novice"
+      ? "IMPORTANT: The user is a beginner. Use simple everyday language only. Occasionally make a logical mistake or leave a weak point they could challenge — this helps them learn. No academic jargon."
+      : level.name==="Debater"
+      ? "The user has some experience. Use clear arguments. Occasionally leave a small logical gap."
+      : "The user is experienced. Argue sharply and rigorously.";
     return `You are a debate opponent. Topic: "${act}". You argue ${cs==="for"?"in favor of":"against"} this. The user argues ${side==="for"?"in favor of":"against"} it.\n${INTENSITY[intensity].prompt}${td?" Style: "+td+".":""}\n${diffNote}\nRules: Never break character. Never fully concede. 2-4 sentences only. No bullet points.`;
   };
 
@@ -257,19 +289,23 @@ export default function App(){
   };
 
   const startDebate=async()=>{
-    setStage("debate");setMsgs([]);setHist([]);setRound(1);setScores([]);setFallacies({});setSummary("");setPrev(null);setLoading(true);
+    setStage("debate");setMsgs([]);setHist([]);setRound(1);setScores([]);setFallacies({});setSummary("");setPrev(null);setLoading(true);setTimerActive(false);
     try{
       const o=await callClaude([{role:"user",content:"Open with your strongest single argument."}],buildSys());
       setHist([{role:"assistant",content:o}]);setMsgs([{role:"claude",text:o}]);
+      setTimerKey(k=>k+1); setTimerActive(true);
     }catch(e){setMsgs([{role:"claude",text:"Error: "+e.message}]);}
     setLoading(false);
   };
 
-  const send=async()=>{
-    if(!input.trim()||loading)return;
-    const txt=input.trim();setInput("");
+  const send=async(autoSubmit=false)=>{
+    if(loading) return;
+    const txt = autoSubmit ? (input.trim()||"[Time ran out — no argument submitted]") : input.trim();
+    if(!txt && !autoSubmit) return;
+    setTimerActive(false);
+    setInput("");
     const idx=msgs.length;
-    setMsgs(m=>[...m,{role:"user",text:txt}]);
+    setMsgs(m=>[...m,{role:"user",text:txt,timedOut:autoSubmit&&!input.trim()}]);
     detectF(txt,idx);
     const newH=[...hist,{role:"user",content:txt}];
     setHist(newH);setRound(r=>r+1);setLoading(true);
@@ -278,10 +314,12 @@ export default function App(){
     setHist([...newH,{role:"assistant",content:reply}]);
     setMsgs(m=>[...m,{role:"claude",text:reply,score:s}]);
     setLoading(false);
+    setTimerKey(k=>k+1); setTimerActive(true);
   };
 
   const endDebate=async()=>{
     if(sumLoading||summary)return;
+    setTimerActive(false);
     setSumLoading(true);
     const a=scores.length?scores.reduce((x,y)=>x+y,0)/scores.length:5;
     const d=Math.round((a-5)*20),old=rating,nw=Math.max(0,old+d);
@@ -302,13 +340,15 @@ export default function App(){
     body{background:#0a0a0f;color:#e8e4dc;font-family:Georgia,serif}
     @keyframes pR{0%{transform:scale(1);opacity:.4}100%{transform:scale(2.8);opacity:0}}
     @keyframes pC{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.2)}}
-    @keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-    .mi{animation:msgIn .35s cubic-bezier(.2,.8,.2,1) forwards}
+    @keyframes msgIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+    .mi{animation:msgIn .4s cubic-bezier(.2,.8,.2,1) forwards}
     .hov:hover{opacity:.82;transition:opacity .12s;cursor:pointer}
     .bhov:hover{filter:brightness(1.1)}
     input:focus,textarea:focus{outline:none;border-color:#c9a84c!important}
-    ::-webkit-scrollbar{width:4px}
-    ::-webkit-scrollbar-thumb{background:#2a2a35;border-radius:2px}
+    ::-webkit-scrollbar{width:5px}
+    ::-webkit-scrollbar-thumb{background:#2a2a35;border-radius:3px}
+    .timer-pulse{animation:pulse .6s ease-in-out infinite}
   `;
 
   // ── SETUP ──────────────────────────────────────────────────────────────────
@@ -328,12 +368,11 @@ export default function App(){
               <div style={{fontSize:13,color:"#9a9690",fontFamily:"sans-serif"}}>{rating} pts{delta!==null&&<span style={{color:delta>=0?"#4ade80":"#f87171",marginLeft:6}}>{delta>=0?"+":""}{delta}</span>}</div>
             </div>
           </div>
-          {/* Progress bar */}
           <div style={{width:130}}>
             <div style={{height:7,background:"#2a2a35",borderRadius:4,overflow:"hidden"}}>
               <div style={{height:"100%",width:`${pct}%`,background:level.color,borderRadius:4,transition:"width 1s ease",boxShadow:`0 0 8px ${level.color}88`}}/>
             </div>
-            {nxt&&<div style={{fontSize:12,color:"#6b6860",fontFamily:"sans-serif",marginTop:4}}>{nxt.min-rating} pts to {nxt.name}</div>}
+            {nxt&&<div style={{fontSize:12,color:"#6b6860",fontFamily:"sans-serif",marginTop:4,textAlign:"center"}}>{nxt.min-rating} pts to {nxt.name}</div>}
           </div>
           <button onClick={()=>setShowStats(s=>!s)} style={{background:"none",border:BDR,borderRadius:8,padding:"8px 18px",fontSize:14,color:"#9a9690",fontFamily:"sans-serif",cursor:"pointer"}}>{showStats?"▾ Hide Stats":"▸ My Stats"}</button>
         </div>
@@ -367,7 +406,7 @@ export default function App(){
       {/* 3 COLUMNS */}
       <div style={{flex:1,display:"flex",minHeight:0}}>
 
-        {/* LEFT — Topics */}
+        {/* LEFT */}
         <div style={{flex:1,borderRight:BDR,display:"flex",flexDirection:"column",padding:"24px 32px",gap:10}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:13,fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",color:G,fontFamily:"sans-serif"}}>Choose a Topic</span>
@@ -375,19 +414,19 @@ export default function App(){
           </div>
           {topics.map(t=>(
             <button key={t.label} className="hov" onClick={()=>{setTopic(t.label);setCustom("");}}
-              style={{flex:1,background:topic===t.label&&!custom?"#1e1c2e":"#0f0f16",border:topic===t.label&&!custom?"1.5px solid #534AB7":BDR,borderRadius:10,padding:"16px",fontFamily:"sans-serif",color:topic===t.label&&!custom?"#b8b0f0":"#c0bdb8",cursor:"pointer",display:"flex",flexDirection:"column",position:"relative"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:14,color:"#6a6860",fontFamily:"sans-serif"}}>{t.cat}</span>
-                <span style={{fontSize:13,color:DC[t.d],fontWeight:700,fontFamily:"sans-serif"}}>{DL[t.d]}</span>
+              style={{flex:1,background:topic===t.label&&!custom?"#1e1c2e":"#0f0f16",border:topic===t.label&&!custom?"1.5px solid #534AB7":BDR,borderRadius:10,padding:"16px",fontFamily:"sans-serif",color:topic===t.label&&!custom?"#b8b0f0":"#c0bdb8",cursor:"pointer",display:"flex",flexDirection:"column"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{fontSize:15,color:"#e8e4dc",fontFamily:"sans-serif",fontWeight:600}}>{t.cat}</span>
+                <span style={{fontSize:13,color:DC[t.d],fontWeight:700,fontFamily:"sans-serif",background:DC[t.d]+"22",padding:"2px 10px",borderRadius:20}}>{DL[t.d]}</span>
               </div>
-              <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"8px 4px 0"}}>
+              <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"4px 4px 0"}}>
                 <span style={{fontSize:19,lineHeight:1.45}}>{t.label}</span>
               </div>
             </button>
           ))}
           <div>
             <div style={{fontSize:14,color:"#6b6860",fontFamily:"sans-serif",marginBottom:8}}>Or type your own:</div>
-            <input value={custom} onChange={e=>{setCustom(e.target.value);setTopic("");}} placeholder="Enter any topic…"
+            <input value={custom} onChange={e=>{setCustom(e.target.value);setTopic("");}}
               style={{width:"100%",background:"#0f0f16",border:BDR,borderRadius:10,padding:"16px 18px",fontSize:18,fontFamily:"sans-serif",color:"#e8e4dc"}}/>
           </div>
           <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",justifyContent:"center"}}>
@@ -400,7 +439,7 @@ export default function App(){
           </div>
         </div>
 
-        {/* MIDDLE — Side + Style */}
+        {/* MIDDLE */}
         <div style={{flex:1,borderRight:BDR,display:"flex",flexDirection:"column",padding:"24px 32px",gap:10}}>
           <div style={{fontSize:13,fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",color:G,fontFamily:"sans-serif"}}>Your Side</div>
           {[["for","👍","I'm FOR it","You argue in favor — Claude argues against"],
@@ -424,7 +463,7 @@ export default function App(){
           ))}
         </div>
 
-        {/* RIGHT — Traits + Scoring + Start */}
+        {/* RIGHT */}
         <div style={{flex:1,display:"flex",flexDirection:"column",padding:"24px 32px",gap:10}}>
           <button onClick={()=>setShowTraits(s=>!s)}
             style={{background:"none",border:"none",cursor:"pointer",color:G,fontSize:14,fontFamily:"sans-serif",fontWeight:700,textTransform:"uppercase",letterSpacing:".12em",padding:0,display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
@@ -441,8 +480,6 @@ export default function App(){
               ))}
             </div>
           )}
-
-          {/* Scoring guide */}
           <div style={{flex:1,background:"#0f0f16",border:BDR,borderRadius:12,padding:"28px",display:"flex",flexDirection:"column"}}>
             <div style={{fontSize:13,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",textAlign:"center",marginBottom:8}}>How Scoring Works</div>
             <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"space-evenly"}}>
@@ -450,9 +487,9 @@ export default function App(){
                 ["🟡","Solid (6-7)","#c9a84c","You gain some points"],
                 ["🟠","Weak (4-5)","#fb923c","You break even"],
                 ["🔴","Poor (1-3)","#f87171","You lose points"]].map(([dot,label,col,explain])=>(
-                <div key={label} style={{display:"flex",alignItems:"center",gap:16,padding:"10px 0",borderBottom:"1px solid #1a1a24"}}>
+                <div key={label} style={{display:"flex",alignItems:"center",gap:16,padding:"12px 0",borderBottom:"1px solid #1a1a24"}}>
                   <span style={{fontSize:30,flexShrink:0}}>{dot}</span>
-                  <div>
+                  <div style={{textAlign:"left"}}>
                     <div style={{fontSize:19,color:col,fontFamily:"sans-serif",fontWeight:700}}>{label}</div>
                     <div style={{fontSize:16,color:"#c0bdb8",fontFamily:"sans-serif",marginTop:4}}>{explain}</div>
                   </div>
@@ -460,7 +497,11 @@ export default function App(){
               ))}
             </div>
           </div>
-
+          {/* Time limit note */}
+          <div style={{background:"#13131a",border:BDR,borderRadius:10,padding:"12px 16px",textAlign:"center",flexShrink:0}}>
+            <div style={{fontSize:13,color:"#6b6860",fontFamily:"sans-serif"}}>⏱ Time per argument at your level:</div>
+            <div style={{fontSize:20,fontWeight:700,color:G,fontFamily:"sans-serif",marginTop:4}}>{timeLimit} seconds</div>
+          </div>
           <button disabled={!act||!side} className={act&&side?"bhov":""} onClick={startDebate}
             style={{flexShrink:0,width:"100%",padding:"22px",background:act&&side?G:"#1a1a24",color:act&&side?"#0a0a0f":"#444",border:"none",borderRadius:12,fontSize:20,fontWeight:700,fontFamily:"sans-serif",letterSpacing:".05em",cursor:act&&side?"pointer":"not-allowed",transition:"all .2s"}}>
             {act&&side?"⚔️  ENTER THE ARENA":"Select a topic & side first"}
@@ -476,12 +517,12 @@ export default function App(){
       <style>{CSS}</style>
       {lvlModal&&<LevelUpModal level={lvlModal} onClose={()=>setLvlModal(null)}/>}
 
-      {/* DEBATE TOP BAR */}
-      <div style={{height:"64px",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 32px",borderBottom:BDR,flexShrink:0}}>
+      {/* TOP BAR */}
+      <div style={{height:"64px",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 32px",borderBottom:BDR,flexShrink:0,background:"rgba(10,10,15,0.95)",backdropFilter:"blur(10px)"}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          <span style={{fontSize:13,fontWeight:700,padding:"4px 12px",borderRadius:20,fontFamily:"sans-serif",background:"#0d1f17",color:"#4ade80",border:"1px solid #1a3d2b"}}>YOU: {side==="for"?"FOR":"AGAINST"}</span>
-          <span style={{fontSize:13,fontWeight:700,padding:"4px 12px",borderRadius:20,fontFamily:"sans-serif",background:"#1e1c2e",color:"#a89eed",border:"1px solid #3d3680"}}>CLAUDE: {side==="for"?"AGAINST":"FOR"}</span>
-          {traits.map(id=><span key={id} style={{fontSize:12,padding:"3px 10px",borderRadius:20,fontFamily:"sans-serif",background:"#1a1208",color:G,border:"1px solid #3d2e10"}}>{TRAITS.find(t=>t.id===id)?.label}</span>)}
+          <span style={{fontSize:14,fontWeight:700,padding:"4px 14px",borderRadius:20,fontFamily:"sans-serif",background:"#0d1f17",color:"#4ade80",border:"1px solid #1a3d2b"}}>YOU: {side==="for"?"FOR":"AGAINST"}</span>
+          <span style={{fontSize:14,fontWeight:700,padding:"4px 14px",borderRadius:20,fontFamily:"sans-serif",background:"#1e1c2e",color:"#a89eed",border:"1px solid #3d3680"}}>CLAUDE: {side==="for"?"AGAINST":"FOR"}</span>
+          {traits.map(id=><span key={id} style={{fontSize:13,padding:"3px 10px",borderRadius:20,fontFamily:"sans-serif",background:"#1a1208",color:G,border:"1px solid #3d2e10"}}>{TRAITS.find(t=>t.id===id)?.label}</span>)}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:20,flexShrink:0}}>
           <div style={{textAlign:"center"}}>
@@ -492,42 +533,48 @@ export default function App(){
             <div style={{fontSize:11,color:"#6b6860",fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".08em"}}>Avg</div>
             <div style={{fontSize:22,fontWeight:700,color:sc(avg)}}>{avg}<span style={{fontSize:13,color:"#3a3a45"}}>/10</span></div>
           </div>}
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:18}}>{level.icon}</span>
-            <div>
-              <div style={{fontSize:14,fontWeight:700,color:level.color,fontFamily:"sans-serif"}}>{level.name}</div>
-              <div style={{fontSize:12,color:"#6b6860",fontFamily:"sans-serif"}}>{rating} pts</div>
-            </div>
-          </div>
           <div style={{display:"flex",gap:8}}>
             <button onClick={endDebate} disabled={sumLoading||!!summary}
-              style={{fontSize:13,color:sumLoading||summary?"#3a3a45":"#f87171",background:"none",border:"1px solid",borderColor:sumLoading||summary?"#2a2a35":"#3a1a1a",borderRadius:8,padding:"8px 14px",cursor:sumLoading||summary?"not-allowed":"pointer",fontFamily:"sans-serif",whiteSpace:"nowrap"}}>
+              style={{fontSize:14,color:sumLoading||summary?"#3a3a45":"#f87171",background:"none",border:"1px solid",borderColor:sumLoading||summary?"#2a2a35":"#3a1a1a",borderRadius:8,padding:"8px 16px",cursor:sumLoading||summary?"not-allowed":"pointer",fontFamily:"sans-serif",whiteSpace:"nowrap"}}>
               {sumLoading?"Generating…":"⏹ End & Summarize"}
             </button>
             <button onClick={()=>setStage("setup")}
-              style={{fontSize:13,color:G,background:"none",border:`1px solid #3d2e10`,borderRadius:8,padding:"8px 14px",cursor:"pointer",fontFamily:"sans-serif"}}>↩ New</button>
+              style={{fontSize:14,color:G,background:"none",border:`1px solid #3d2e10`,borderRadius:8,padding:"8px 16px",cursor:"pointer",fontFamily:"sans-serif"}}>↩ New</button>
           </div>
         </div>
       </div>
 
       <div style={{flex:1,display:"flex",minHeight:0}}>
-        {/* CHAT */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
-          {/* Subtle background pattern */}
-          <div style={{position:"absolute",inset:0,backgroundImage:`radial-gradient(circle at 20% 50%, #1a1a2e22 0%, transparent 50%), radial-gradient(circle at 80% 20%, #0d1f1722 0%, transparent 50%)`,pointerEvents:"none",zIndex:0}}/>
-          <div ref={chatRef} style={{flex:1,overflowY:"auto",padding:"24px 32px",display:"flex",flexDirection:"column",gap:16,position:"relative",zIndex:1}}>
+        {/* CHAT AREA */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative",
+          background:"linear-gradient(135deg, #0a0a0f 0%, #0d0d18 40%, #0a1012 70%, #0d0a0f 100%)"}}>
+          {/* Decorative background elements */}
+          <div style={{position:"absolute",inset:0,overflow:"hidden",pointerEvents:"none",zIndex:0}}>
+            <div style={{position:"absolute",top:"10%",left:"5%",width:300,height:300,borderRadius:"50%",background:"radial-gradient(circle, #534AB711 0%, transparent 70%)"}}/>
+            <div style={{position:"absolute",bottom:"20%",right:"8%",width:250,height:250,borderRadius:"50%",background:"radial-gradient(circle, #c9a84c08 0%, transparent 70%)"}}/>
+            <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:500,height:500,borderRadius:"50%",background:"radial-gradient(circle, #1a1a2e18 0%, transparent 60%)"}}/>
+            {/* Subtle grid lines */}
+            <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0.03}} xmlns="http://www.w3.org/2000/svg">
+              <defs><pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse"><path d="M 60 0 L 0 0 0 60" fill="none" stroke="#c9a84c" strokeWidth="0.5"/></pattern></defs>
+              <rect width="100%" height="100%" fill="url(#grid)"/>
+            </svg>
+          </div>
+
+          <div ref={chatRef} style={{flex:1,overflowY:"auto",padding:"28px 36px",display:"flex",flexDirection:"column",gap:18,position:"relative",zIndex:1}}>
             {msgs.map((m,i)=>(
               <div key={i} className="mi" style={{display:"flex",flexDirection:"column",alignItems:m.role==="user"?"flex-end":"flex-start",alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"72%"}}>
-                <div style={{fontSize:12,color:"#6b6860",marginBottom:5,fontFamily:"sans-serif",letterSpacing:".06em",textTransform:"uppercase",textAlign:m.role==="user"?"right":"left"}}>{m.role==="user"?"You":"Claude"}</div>
-                <div style={{padding:"14px 18px",borderRadius:m.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",fontSize:17,lineHeight:1.75,background:m.role==="user"?G:"#1a1a24",color:m.role==="user"?"#0a0a0f":"#d4d0c8",border:m.role==="user"?"none":BDR}}>{m.text}</div>
-                {m.role==="user"&&m.score!=null&&(
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
-                    <div style={{width:`${(m.score/10)*80}px`,height:3,background:sc(m.score),borderRadius:2,transition:"width .6s ease"}}/>
+                <div style={{fontSize:12,color:"#6b6860",marginBottom:6,fontFamily:"sans-serif",letterSpacing:".06em",textTransform:"uppercase",textAlign:m.role==="user"?"right":"left"}}>{m.role==="user"?"You":"Claude"}</div>
+                <div style={{padding:"16px 20px",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",fontSize:17,lineHeight:1.75,background:m.role==="user"?"linear-gradient(135deg, #c9a84c, #b8962e)":"rgba(26,26,36,0.95)",color:m.role==="user"?"#0a0a0f":"#d4d0c8",border:m.role==="user"?"none":"1px solid #2a2a3a",backdropFilter:m.role==="user"?"none":"blur(8px)",boxShadow:m.role==="user"?"0 4px 20px #c9a84c33":"0 4px 20px rgba(0,0,0,0.3)"}}>
+                  {m.timedOut?<span style={{color:"#f87171",fontStyle:"italic"}}>⏱ Time ran out — no argument submitted</span>:m.text}
+                </div>
+                {m.role==="user"&&!m.timedOut&&m.score!=null&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:7}}>
+                    <div style={{width:`${(m.score/10)*80}px`,height:4,background:sc(m.score),borderRadius:2,transition:"width .6s ease",boxShadow:`0 0 6px ${sc(m.score)}88`}}/>
                     <span style={{fontSize:14,color:sc(m.score),fontFamily:"sans-serif",fontWeight:600}}>{sl(m.score)} ({m.score}/10)</span>
                   </div>
                 )}
                 {m.role==="user"&&fallacies[i]&&(
-                  <div style={{marginTop:5,display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <div style={{marginTop:6,display:"flex",gap:6,flexWrap:"wrap"}}>
                     {fallacies[i].map(f=><span key={f} style={{fontSize:13,padding:"3px 10px",background:"#2d1515",border:"1px solid #7f1d1d",borderRadius:20,color:"#f87171",fontFamily:"sans-serif"}}>⚠️ {f}</span>)}
                   </div>
                 )}
@@ -535,79 +582,103 @@ export default function App(){
             ))}
             {loading&&(
               <div className="mi" style={{display:"flex",flexDirection:"column",alignItems:"flex-start",alignSelf:"flex-start"}}>
-                <div style={{fontSize:12,color:"#6b6860",marginBottom:5,fontFamily:"sans-serif",letterSpacing:".06em",textTransform:"uppercase"}}>Claude</div>
+                <div style={{fontSize:12,color:"#6b6860",marginBottom:6,fontFamily:"sans-serif",letterSpacing:".06em",textTransform:"uppercase"}}>Claude</div>
                 <PulsingOrb/>
               </div>
             )}
             {summary&&(
-              <div className="mi" style={{background:"#0e0e1a",border:"1px solid #2a2a55",borderRadius:14,padding:"20px 24px",marginTop:6}}>
-                <div style={{fontSize:13,fontWeight:700,color:"#a89eed",marginBottom:10,letterSpacing:".1em",textTransform:"uppercase",fontFamily:"sans-serif"}}>📋 Debate Summary & Coaching</div>
-                <p style={{fontSize:16,color:"#c8c4b8",lineHeight:1.75,margin:"0 0 14px"}}>{summary}</p>
+              <div className="mi" style={{background:"rgba(14,14,26,0.97)",border:"1px solid #2a2a55",borderRadius:16,padding:"22px 28px",marginTop:6,backdropFilter:"blur(8px)"}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#a89eed",marginBottom:12,letterSpacing:".1em",textTransform:"uppercase",fontFamily:"sans-serif"}}>📋 Debate Summary & Coaching</div>
+                <p style={{fontSize:17,color:"#c8c4b8",lineHeight:1.8,margin:"0 0 16px"}}>{summary}</p>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <span style={{fontSize:14,color:"#9a9690",fontFamily:"sans-serif"}}>Avg: <span style={{color:sc(avg),fontWeight:700}}>{avg}/10</span>{delta!==null&&<span style={{marginLeft:8,color:delta>=0?"#4ade80":"#f87171",fontWeight:700}}>{delta>=0?"+":""}{delta} pts</span>}</span>
-                  <button onClick={()=>setStage("setup")} style={{padding:"9px 20px",background:G,color:"#0a0a0f",border:"none",borderRadius:9,fontSize:15,fontWeight:700,fontFamily:"sans-serif",cursor:"pointer"}}>New Debate</button>
+                  <span style={{fontSize:15,color:"#9a9690",fontFamily:"sans-serif"}}>Avg: <span style={{color:sc(avg),fontWeight:700}}>{avg}/10</span>{delta!==null&&<span style={{marginLeft:8,color:delta>=0?"#4ade80":"#f87171",fontWeight:700}}>{delta>=0?"+":""}{delta} pts</span>}</span>
+                  <button onClick={()=>setStage("setup")} style={{padding:"10px 22px",background:G,color:"#0a0a0f",border:"none",borderRadius:9,fontSize:16,fontWeight:700,fontFamily:"sans-serif",cursor:"pointer"}}>New Debate</button>
                 </div>
               </div>
             )}
           </div>
+
+          {/* INPUT */}
           {!summary&&(
-            <div style={{padding:"14px 32px",borderTop:BDR,display:"flex",gap:12,alignItems:"center",flexShrink:0,background:"#0a0a0f",position:"relative",zIndex:1}}>
+            <div style={{padding:"16px 36px",borderTop:"1px solid #1a1a2e",display:"flex",gap:12,alignItems:"flex-end",flexShrink:0,background:"rgba(10,10,15,0.95)",backdropFilter:"blur(10px)",position:"relative",zIndex:1}}>
               <textarea value={input} onChange={e=>setInput(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
-                placeholder=""
-                style={{flex:1,resize:"none",height:"52px",padding:"14px 16px",fontSize:16,fontFamily:"sans-serif",background:"#0f0f16",border:BDR,borderRadius:10,color:"#e8e4dc",lineHeight:1.4}}/>
-              <button disabled={loading||!input.trim()} onClick={send}
-                style={{height:"52px",padding:"0 28px",background:loading||!input.trim()?"#1a1a24":G,color:loading||!input.trim()?"#444":"#0a0a0f",border:"none",borderRadius:10,fontSize:16,fontWeight:700,fontFamily:"sans-serif",cursor:loading||!input.trim()?"not-allowed":"pointer",flexShrink:0}}>
+                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send(false);}}}
+                style={{flex:1,resize:"none",height:"56px",padding:"16px 18px",fontSize:16,fontFamily:"sans-serif",background:"rgba(15,15,22,0.8)",border:"1px solid #2a2a3a",borderRadius:12,color:"#e8e4dc",lineHeight:1.4,backdropFilter:"blur(8px)"}}/>
+              <button disabled={loading||!input.trim()} onClick={()=>send(false)}
+                style={{height:"56px",padding:"0 32px",background:loading||!input.trim()?"#1a1a24":G,color:loading||!input.trim()?"#444":"#0a0a0f",border:"none",borderRadius:12,fontSize:16,fontWeight:700,fontFamily:"sans-serif",cursor:loading||!input.trim()?"not-allowed":"pointer",flexShrink:0,boxShadow:loading||!input.trim()?"none":"0 4px 16px #c9a84c44"}}>
                 Send
               </button>
             </div>
           )}
         </div>
 
-        {/* RIGHT SIDEBAR */}
-        <div style={{width:"260px",borderLeft:BDR,padding:"20px",display:"flex",flexDirection:"column",gap:0,flexShrink:0,overflowY:"auto",background:"#0d0d14"}}>
+        {/* RIGHT SIDEBAR — doubled width */}
+        <div style={{width:"360px",borderLeft:"1px solid #1a1a2e",display:"flex",flexDirection:"column",flexShrink:0,background:"linear-gradient(180deg, #0d0d16 0%, #0a0a12 100%)"}}>
           {/* Topic */}
-          <div style={{background:"#13131a",border:BDR,borderRadius:12,padding:"16px",marginBottom:14}}>
-            <div style={{fontSize:11,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}}>Topic</div>
-            <div style={{fontSize:16,color:"#e8e4dc",lineHeight:1.5,fontWeight:600}}>"{act}"</div>
+          <div style={{padding:"20px 24px",borderBottom:"1px solid #1a1a2e"}}>
+            <div style={{fontSize:12,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>Topic</div>
+            <div style={{fontSize:17,color:"#e8e4dc",lineHeight:1.5,fontWeight:600}}>"{act}"</div>
           </div>
 
-          {/* Score guide */}
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:11,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>Argument Score</div>
-            {[["🟢","Strong","8-10","#4ade80"],["🟡","Solid","6-7","#c9a84c"],["🟠","Weak","4-5","#fb923c"],["🔴","Poor","1-3","#f87171"]].map(([dot,l,r,col])=>(
-              <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}>
-                <span style={{fontSize:15,fontFamily:"sans-serif",color:"#c8c4b8"}}>{dot} {l}</span>
-                <span style={{fontSize:15,color:col,fontFamily:"sans-serif",fontWeight:600}}>{r}</span>
+          {/* Timer */}
+          {!summary&&(
+            <div style={{padding:"16px 24px",borderBottom:"1px solid #1a1a2e",display:"flex",alignItems:"center",gap:16}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}}>Your Time</div>
+                <div style={{fontSize:14,color:"#6b6860",fontFamily:"sans-serif"}}>Make your move before time runs out</div>
               </div>
-            ))}
+              {timerActive&&!loading&&<Timer key={timerKey} seconds={timeLimit} onExpire={()=>send(true)}/>}
+              {(!timerActive||loading)&&(
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontSize:22,color:"#3a3a45",fontFamily:"sans-serif",fontWeight:700}}>–:––</div>
+                  <div style={{fontSize:12,color:"#3a3a45",fontFamily:"sans-serif"}}>waiting</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{flex:1,overflowY:"auto",padding:"20px 24px",display:"flex",flexDirection:"column",gap:20}}>
+            {/* Score guide */}
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",marginBottom:12}}>Argument Score</div>
+              {[["🟢","Strong","8-10","#4ade80"],["🟡","Solid","6-7","#c9a84c"],["🟠","Weak","4-5","#fb923c"],["🔴","Poor","1-3","#f87171"]].map(([dot,l,r,col])=>(
+                <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,padding:"8px 12px",background:"#13131a",borderRadius:8,border:"1px solid #1a1a24"}}>
+                  <span style={{fontSize:17,fontFamily:"sans-serif",color:"#c8c4b8"}}>{dot} {l}</span>
+                  <span style={{fontSize:17,color:col,fontFamily:"sans-serif",fontWeight:700}}>{r}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Fallacy flags */}
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>Fallacy Flags</div>
+              <div style={{fontSize:16,color:"#c0bdb8",fontFamily:"sans-serif",lineHeight:1.7,background:"#13131a",border:"1px solid #1a1a24",borderRadius:8,padding:"12px 14px"}}>
+                If you make a logical mistake, a <span style={{color:"#f87171",fontWeight:700}}>⚠️ red tag</span> appears under your message.
+              </div>
+            </div>
+
+            {/* Tips */}
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>Debate Tips</div>
+              {["Use real-world examples","Stay focused on the topic","Directly respond to Claude's point","Avoid emotional language","Ask 'why?' to expose weak logic"].map((tip,i)=>(
+                <div key={tip} style={{fontSize:16,color:"#c0bdb8",fontFamily:"sans-serif",marginBottom:10,padding:"10px 14px",paddingLeft:14,borderLeft:"3px solid #534AB7",background:"#13131a",borderRadius:"0 8px 8px 0",lineHeight:1.4}}>{tip}</div>
+              ))}
+            </div>
           </div>
 
-          {/* Fallacy flags */}
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:11,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>Fallacy Flags</div>
-            <div style={{fontSize:15,color:"#c0bdb8",fontFamily:"sans-serif",lineHeight:1.7}}>If you make a logical mistake, a <span style={{color:"#f87171"}}>⚠️ red tag</span> appears under your message.</div>
-          </div>
-
-          {/* Tips */}
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:11,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>Tips</div>
-            {["Use real-world examples","Stay on topic","Directly respond to Claude's point","Avoid emotional language","Ask 'why?' to expose weak logic"].map(tip=>(
-              <div key={tip} style={{fontSize:15,color:"#c0bdb8",fontFamily:"sans-serif",marginBottom:10,paddingLeft:10,borderLeft:"2px solid #534AB7",lineHeight:1.45}}>{tip}</div>
-            ))}
-          </div>
-
-          {/* Level */}
-          <div style={{marginTop:"auto",background:"#13131a",border:BDR,borderRadius:12,padding:"16px"}}>
-            <div style={{fontSize:11,fontWeight:700,color:G,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>Your Level</div>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-              <span style={{fontSize:22}}>{level.icon}</span>
-              <span style={{fontSize:17,fontWeight:700,color:level.color,fontFamily:"sans-serif"}}>{level.name}</span>
+          {/* Level bar at bottom */}
+          <div style={{padding:"16px 24px",borderTop:"1px solid #1a1a2e",background:"#0d0d16"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:22}}>{level.icon}</span>
+                <span style={{fontSize:18,fontWeight:700,color:level.color,fontFamily:"sans-serif"}}>{level.name}</span>
+              </div>
+              <span style={{fontSize:14,color:"#6b6860",fontFamily:"sans-serif"}}>{rating} pts</span>
             </div>
             <div style={{height:8,background:"#2a2a35",borderRadius:4,overflow:"hidden",marginBottom:6}}>
-              <div style={{height:"100%",width:`${pct}%`,background:level.color,borderRadius:4,transition:"width 1s ease",boxShadow:`0 0 8px ${level.color}88`}}/>
+              <div style={{height:"100%",width:`${pct}%`,background:level.color,borderRadius:4,transition:"width 1s ease",boxShadow:`0 0 10px ${level.color}88`}}/>
             </div>
-            {nxt&&<div style={{fontSize:14,color:"#9a9690",fontFamily:"sans-serif"}}>{nxt.min-rating} pts to {nxt.name}</div>}
+            {nxt&&<div style={{fontSize:14,color:"#9a9690",fontFamily:"sans-serif",textAlign:"center"}}>{nxt.min-rating} pts to {nxt.name}</div>}
           </div>
         </div>
       </div>
