@@ -177,14 +177,15 @@ function PulsingOrb() {
 }
 
 function LevelUpModal({ level, onClose }) {
+  const down = level.deranked;
   return (
     <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.94)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,animation:"fadeIn .3s ease" }}>
-      <div style={{ background:"linear-gradient(145deg, #13131f, #1a1a2e)",border:`1px solid ${level.color}44`,borderRadius:28,padding:"3.5rem 3rem",textAlign:"center",maxWidth:420,boxShadow:`0 0 80px ${level.color}33` }}>
-        <div style={{ fontSize:72,marginBottom:20 }}>{level.icon}</div>
-        <div style={{ fontSize:11,letterSpacing:".3em",textTransform:"uppercase",color:level.color,marginBottom:12,opacity:.8 }}>Level Up</div>
+      <div style={{ background:"linear-gradient(145deg, #13131f, #1a1a2e)",border:`1px solid ${down?"#f8717144":level.color+"44"}`,borderRadius:28,padding:"3.5rem 3rem",textAlign:"center",maxWidth:420,boxShadow:`0 0 80px ${down?"#f8717133":level.color+"33"}` }}>
+        <div style={{ fontSize:72,marginBottom:20,filter:down?"grayscale(.5)":"none" }}>{down?"📉":level.icon}</div>
+        <div style={{ fontSize:11,letterSpacing:".3em",textTransform:"uppercase",color:down?"#f87171":level.color,marginBottom:12,opacity:.8 }}>{down?"Deranked":"Level Up"}</div>
         <div style={{ fontSize:34,fontWeight:900,color:"#f0ece4",marginBottom:12,letterSpacing:"-1px",fontFamily:"'Playfair Display',serif" }}>{level.name}</div>
-        <div style={{ fontSize:16,color:"#6b6860",marginBottom:6 }}>Unlocked: <span style={{ color:level.color }}>{level.unlock}</span></div>
-        <button onClick={onClose} style={{ marginTop:28,padding:"14px 40px",background:level.color,color:"#0a0a0f",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:"pointer",letterSpacing:".05em" }}>Continue →</button>
+        <div style={{ fontSize:16,color:"#6b6860",marginBottom:6 }}>{down ? <>You dropped back to <span style={{color:"#f87171"}}>{level.name}</span>. Win debates to climb again.</> : <>Unlocked: <span style={{ color:level.color }}>{level.unlock}</span></>}</div>
+        <button onClick={onClose} style={{ marginTop:28,padding:"14px 40px",background:down?"#f87171":level.color,color:"#0a0a0f",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:"pointer",letterSpacing:".05em" }}>{down?"I'll be back":"Continue →"}</button>
       </div>
     </div>
   );
@@ -223,26 +224,33 @@ function ConfirmModal({ onSave, onDiscard, onCancel }) {
   );
 }
 
-// Animated hourglass with glowing sand
-function Hourglass({ left, total }) {
-  const pct = left / total;
-  const col = pct > 0.5 ? "#4ade80" : pct > 0.25 ? G : "#f87171";
-  const urgent = pct <= 0.25;
-  const topFill = pct, botFill = 1 - pct;
+// Circular ring countdown with orbiting spark
+function RingTimer({ left, total, idle = false }) {
+  const pct = idle ? 1 : Math.max(0, left / total);
+  const col = idle ? "#3a3a4e" : pct > 0.5 ? "#4ade80" : pct > 0.25 ? G : "#f87171";
+  const urgent = !idle && pct <= 0.25;
+  const R = 30, C = 2 * Math.PI * R;
+  const angle = pct * 360 - 90;
+  const sparkX = 38 + R * Math.cos(angle * Math.PI / 180);
+  const sparkY = 38 + R * Math.sin(angle * Math.PI / 180);
+  const mins = Math.floor(left / 60), secs = left % 60;
   return (
-    <div style={{ position:"relative",width:60,height:76,display:"flex",alignItems:"center",justifyContent:"center" }}>
-      <div style={{ position:"absolute",inset:0,borderRadius:"50%",background:`radial-gradient(circle, ${col}22 0%, transparent 70%)`,animation:urgent?"hintPulse .6s ease-in-out infinite":"none" }} />
-      <svg width="60" height="76" viewBox="0 0 56 72" style={{ animation: urgent ? "sandShake 0.3s ease-in-out infinite" : "none", position:"relative" }}>
-        <path d="M10 6 L46 6 L46 14 Q46 28 30 34 L30 38 Q46 44 46 58 L46 66 L10 66 L10 58 Q10 44 26 38 L26 34 Q10 28 10 14 Z"
-          fill="rgba(255,255,255,0.02)" stroke={`${col}66`} strokeWidth="1.5"/>
-        <rect x="8" y="4" width="40" height="3.5" rx="1.5" fill={`${col}99`} />
-        <rect x="8" y="64.5" width="40" height="3.5" rx="1.5" fill={`${col}99`} />
-        <clipPath id="topClip"><path d="M12 8 L44 8 L44 14 Q44 27 28 33 Q12 27 12 14 Z"/></clipPath>
-        <rect x="8" y={8 + (1-topFill)*26} width="40" height={topFill*26} fill={col} clipPath="url(#topClip)" opacity="0.9" style={{transition:"all 1s linear"}}/>
-        <clipPath id="botClip"><path d="M28 39 Q44 45 44 58 L44 64 L12 64 L12 58 Q12 45 28 39 Z"/></clipPath>
-        <rect x="8" y={64 - botFill*25} width="40" height={botFill*25} fill={col} clipPath="url(#botClip)" opacity="0.9" style={{transition:"all 1s linear"}}/>
-        {left > 0 && left < total && <rect x="27" y="34" width="2" height="6" fill={col} opacity="0.95"><animate attributeName="opacity" values="0.4;1;0.4" dur="0.6s" repeatCount="indefinite"/></rect>}
+    <div style={{ position:"relative",width:76,height:76 }}>
+      {!idle && <div style={{ position:"absolute",inset:-6,borderRadius:"50%",background:`radial-gradient(circle, ${col}1e 0%, transparent 70%)`,animation:urgent?"hintPulse .6s ease-in-out infinite":"none" }} />}
+      <svg width="76" height="76" viewBox="0 0 76 76">
+        <circle cx="38" cy="38" r={R} fill="none" stroke="#1e1e2e" strokeWidth="5" />
+        <circle cx="38" cy="38" r={R} fill="none" stroke={col} strokeWidth="5" strokeLinecap="round"
+          strokeDasharray={C} strokeDashoffset={C * (1 - pct)}
+          transform="rotate(-90 38 38)"
+          style={{ transition:"stroke-dashoffset 1s linear, stroke .5s ease", filter:`drop-shadow(0 0 5px ${col}aa)` }} />
+        {!idle && left > 0 && <circle cx={sparkX} cy={sparkY} r="3.5" fill="#fff" style={{ filter:`drop-shadow(0 0 6px ${col})`, transition:"all 1s linear" }} />}
       </svg>
+      <div style={{ position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center" }}>
+        <span style={{ fontSize:idle?15:18,fontWeight:900,color:idle?"#5a5868":col,fontVariantNumeric:"tabular-nums",lineHeight:1,letterSpacing:"-0.5px" }}>
+          {idle ? `${total}s` : mins > 0 ? `${mins}:${String(secs).padStart(2,"0")}` : secs}
+        </span>
+        {!idle && <span style={{ fontSize:8,color:"#5a5868",letterSpacing:".12em",textTransform:"uppercase",marginTop:2 }}>sec</span>}
+      </div>
     </div>
   );
 }
@@ -257,24 +265,13 @@ function Timer({ seconds, onExpire }) {
     }, 1000);
     return () => clearInterval(ref.current);
   }, [seconds]);
-  const col = left > seconds * 0.5 ? "#4ade80" : left > seconds * 0.25 ? G : "#f87171";
-  const mins = Math.floor(left / 60), secs = left % 60;
-  return (
-    <div style={{ display:"flex",alignItems:"center",gap:14 }}>
-      <Hourglass left={left} total={seconds} />
-      <div style={{ textAlign:"center" }}>
-        <div style={{ fontSize:30,fontWeight:900,color:col,fontVariantNumeric:"tabular-nums",letterSpacing:"-1px",lineHeight:1 }}>
-          {mins > 0 ? `${mins}:${String(secs).padStart(2,"0")}` : secs}
-        </div>
-        <div style={{ fontSize:10,color:"#6b6860",letterSpacing:".08em",textTransform:"uppercase",marginTop:4 }}>left</div>
-      </div>
-    </div>
-  );
+  return <RingTimer left={left} total={seconds} />;
 }
 
 export default function App() {
   const saved = loadSt();
   const [rating, setRating]       = useState(saved?.rating ?? 0);
+  const [bonusNext, setBonusNext] = useState(saved?.bonusNext ?? false);
   const [prevRating, setPrev]     = useState(null);
   const [trophies, setTrophies]   = useState(saved?.trophies ?? []);
   const [topics, setTopics]       = useState(() => pickTopics(saved?.rating ?? 0));
@@ -320,12 +317,12 @@ export default function App() {
   const timeLimit = LEVEL_TIME[level.name] || 60;
   const maxHints = LEVEL_HINTS[level.name] ?? 0;
 
-  useEffect(() => { saveSt({ rating, trophies }); }, [rating, trophies]);
+  useEffect(() => { saveSt({ rating, trophies, bonusNext }); }, [rating, trophies, bonusNext]);
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [msgs, loading, summary]);
 
   const refresh = () => { setTopics(pickTopics(rating, topics.map(t => t.label))); setTopic(""); setCustom(""); };
   const toggleStats = () => {
-    if (showStats) { setStatsClosing(true); setTimeout(() => { setShowStats(false); setStatsClosing(false); }, 350); }
+    if (showStats) { setStatsClosing(true); setTimeout(() => { setShowStats(false); setStatsClosing(false); }, 620); }
     else setShowStats(true);
   };
   const toggleTrait = id => setTraits(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id]);
@@ -349,7 +346,7 @@ export default function App() {
 
   const grade = async text => {
     try {
-      const r = await callClaude([{ role: "user", content: `Grade this debate argument 1-10. ONE number only.\n"${text}"\nTopic:"${act}"` }], "Impartial judge. Reply single integer 1-10 only.");
+      const r = await callClaude([{ role: "user", content: `Grade this debate argument 1-10. ONE number only.\n"${text}"\nTopic:"${act}"` }], "Impartial debate judge. Reply with a single integer 1-10 only. Rubric: 1-3 off-topic or no real argument; 4-5 weak or generic; 6-7 solid with reasoning; 8 strong with evidence or examples; 9 excellent — clear logic plus concrete evidence; 10 exceptional. Genuinely strong arguments deserve 9s — don't hoard high scores.");
       const n = parseInt(r.trim()); return isNaN(n) ? 5 : Math.min(10, Math.max(1, n));
     } catch { return 5; }
   };
@@ -383,8 +380,8 @@ export default function App() {
       setStage("debate"); setMsgs([]); setHist([]); setRound(1); setScores([]);
       setFallacies({}); setSummary(""); setPrev(null); setDebateStarted(false);
       setTimerActive(false); setTimeouts(0); setHint(""); setAutoLost(false);
-    }, 700);
-    setTimeout(() => setTransitioning(false), 1400);
+    }, 950);
+    setTimeout(() => setTransitioning(false), 2000);
   };
 
   const goHome = () => {
@@ -426,17 +423,45 @@ export default function App() {
   const endDebate = async (lost = false) => {
     if (sumLoading || summary) return;
     setTimerActive(false); setSumLoading(true);
-    let a = scores.length ? scores.reduce((x, y) => x + y, 0) / scores.length : 5;
+    const participated = scores.length > 0;
+    let a = participated ? scores.reduce((x, y) => x + y, 0) / scores.length : 0;
     if (lost) a = Math.min(a, 2);
-    const d = lost ? -Math.abs(Math.round((5 - a) * 20)) - 20 : Math.round((a - 5) * 20);
+
+    // Point delta: no participation = flat penalty; loss = heavy penalty; else Elo-style
+    let d;
+    if (!participated) d = -40;
+    else if (lost) d = -Math.abs(Math.round((5 - a) * 20)) - 20;
+    else d = Math.round((a - 5) * 20);
+
+    // 2x bonus from a previous 9+ debate applies to positive gains only
+    const bonusApplied = bonusNext && d > 0;
+    if (bonusApplied) d *= 2;
+    if (bonusNext) setBonusNext(false);
+    // Earn the bonus for next time with a 9+ average
+    if (participated && !lost && a >= 9) setBonusNext(true);
+
     const old = rating, nw = Math.max(0, old + d);
     setPrev(old); setRating(nw);
-    if (getLevel(nw).name !== getLevel(old).name && nw > old) setLvlModal(getLevel(nw));
+    const ol = getLevel(old), nl = getLevel(nw);
+    if (nl.name !== ol.name) setLvlModal({ ...nl, deranked: nw < old });
     setTrophies(t => [{ topic: act, side, avg: Math.round(a * 10) / 10, delta: d, date: new Date().toLocaleDateString(), rounds: round }, ...t].slice(0, 20));
+
+    if (!participated) {
+      // No arguments were made — don't ask the API to invent feedback
+      const noShow = {
+        civil: "You didn't make any arguments this time, so there's nothing for me to assess. No harm done — come back when you're ready to engage, and we'll have a proper debate. Points were deducted for the forfeit.",
+        sharp: "You didn't put forward a single argument, so there's nothing to evaluate. A debate requires participation. Points deducted — show up ready to argue next time.",
+        ruthless: "You showed up, said nothing of substance, and bailed. That's not a debate, that's a forfeit. I can't critique arguments that don't exist. Points deducted. Come back when you actually have something to say.",
+      };
+      setSummary(noShow[intensity]);
+      setSumLoading(false);
+      return;
+    }
+
     try {
       const prompt = lost
         ? `The debate is over — the user lost by running out of time twice. Give them spoken coaching feedback in under 90 words. Mention they need to respond faster.`
-        : `The debate is over. Give the user spoken coaching feedback in under 110 words covering: their strongest moment, their weakest point, any logical mistakes, and one concrete tip to improve.`;
+        : `The debate is over. Give the user spoken coaching feedback in under 110 words covering: their strongest moment, their weakest point, any logical mistakes, and one concrete tip to improve. Base it ONLY on arguments the user actually wrote — do not invent anything.`;
       const s = await callClaude([...hist, { role: "user", content: prompt }], `You are their debate coach speaking directly to them. Your feedback style is ${INTENSITY[intensity].coach}. Write in flowing natural prose, like you're talking to them — NO markdown, NO asterisks, NO bullet points, NO numbered lists, NO bold headers. Just plain conversational paragraphs. Address them as "you".`);
       setSummary(stripMd(s));
     } catch (e) { setSummary("Could not generate summary: " + e.message); }
@@ -453,13 +478,13 @@ export default function App() {
     @keyframes msgIn{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
     @keyframes urgentPulse{0%,100%{opacity:1}50%{opacity:.45}}
     @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-    @keyframes drawerDown{from{opacity:0;max-height:0;transform:translateY(-10px)}to{opacity:1;max-height:400px;transform:translateY(0)}}
-    @keyframes drawerUp{from{opacity:1;max-height:400px;transform:translateY(0)}to{opacity:0;max-height:0;transform:translateY(-10px)}}
+    @keyframes drawerDown{from{opacity:0;max-height:0;transform:translateY(-16px)}60%{opacity:.7}to{opacity:1;max-height:400px;transform:translateY(0)}}
+    @keyframes drawerUp{from{opacity:1;max-height:400px;transform:translateY(0)}40%{opacity:.7}to{opacity:0;max-height:0;transform:translateY(-16px)}}
     @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
     @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
     @keyframes hintPulse{0%,100%{opacity:.4}50%{opacity:1}}
     @keyframes sandShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-0.6px)}75%{transform:translateX(0.6px)}}
-    @keyframes arenaFlash{0%{opacity:0}15%{opacity:1}55%{opacity:1}100%{opacity:0}}
+    @keyframes arenaFlash{0%{opacity:0}12%{opacity:1}70%{opacity:1}100%{opacity:0}}
     @keyframes arenaText{0%{opacity:0;transform:scale(.8) translateY(10px);letter-spacing:.1em}30%{opacity:1;transform:scale(1) translateY(0);letter-spacing:.35em}75%{opacity:1;transform:scale(1) translateY(0);letter-spacing:.35em}100%{opacity:0;transform:scale(1.1);letter-spacing:.6em}}
     @keyframes swordSlash{0%{transform:translateX(-120%) rotate(-12deg);opacity:0}40%{opacity:1}100%{transform:translateX(120%) rotate(-12deg);opacity:0}}
     .mi{animation:msgIn .4s cubic-bezier(.2,.8,.2,1) forwards}
@@ -474,9 +499,9 @@ export default function App() {
   `;
 
   const arenaTransition = transitioning && (
-    <div style={{ position:"fixed",inset:0,zIndex:500,background:"radial-gradient(circle at center, #1a1208, #0a0a0f 70%)",display:"flex",alignItems:"center",justifyContent:"center",animation:"arenaFlash 1.4s ease-in-out forwards",overflow:"hidden" }}>
-      <div style={{ position:"absolute",top:"50%",left:0,width:"100%",height:3,background:`linear-gradient(90deg,transparent,${G},transparent)`,animation:"swordSlash 1.4s ease-in-out forwards",boxShadow:`0 0 20px ${G}` }} />
-      <div style={{ textAlign:"center",animation:"arenaText 1.4s ease-in-out forwards" }}>
+    <div style={{ position:"fixed",inset:0,zIndex:500,background:"radial-gradient(circle at center, #1a1208, #0a0a0f 70%)",display:"flex",alignItems:"center",justifyContent:"center",animation:"arenaFlash 2s ease-in-out forwards",overflow:"hidden" }}>
+      <div style={{ position:"absolute",top:"50%",left:0,width:"100%",height:3,background:`linear-gradient(90deg,transparent,${G},transparent)`,animation:"swordSlash 2s ease-in-out forwards",boxShadow:`0 0 20px ${G}` }} />
+      <div style={{ textAlign:"center",animation:"arenaText 2s ease-in-out forwards" }}>
         <div style={{ fontSize:56,marginBottom:12 }}>⚔️</div>
         <div style={{ fontSize:34,fontWeight:900,color:G,fontFamily:"'Playfair Display',serif",textTransform:"uppercase" }}>Enter the Arena</div>
       </div>
@@ -529,7 +554,7 @@ export default function App() {
 
       {/* STATS DRAWER */}
       {showStats && (
-        <div className="drawer" style={{ background:"rgba(10,10,18,0.97)",borderBottom:BDR,padding:"20px 44px",display:"flex",gap:48,flexShrink:0,zIndex:2,position:"relative",backdropFilter:"blur(20px)",animation:statsClosing?"drawerUp .35s cubic-bezier(.4,0,.6,1) forwards":"drawerDown .4s cubic-bezier(.2,.8,.2,1) forwards" }}>
+        <div className="drawer" style={{ background:"rgba(10,10,18,0.97)",borderBottom:BDR,padding:"20px 44px",display:"flex",gap:48,flexShrink:0,zIndex:2,position:"relative",backdropFilter:"blur(20px)",animation:statsClosing?"drawerUp .65s cubic-bezier(.45,.05,.35,1) forwards":"drawerDown .7s cubic-bezier(.45,.05,.35,1) forwards" }}>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,marginBottom:14 }}>Recent Debates</div>
             {trophies.length === 0 && <p style={{ fontSize:13,color:"#5a5868" }}>No debates yet. Enter the arena to begin.</p>}
@@ -571,8 +596,14 @@ export default function App() {
             <button key={t.label} className="hov" onClick={() => { setTopic(t.label); setCustom(""); }}
               style={{ flex:1,background:topic===t.label&&!custom?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:topic===t.label&&!custom?"1px solid #6058c8":BDR,borderRadius:12,padding:"16px 18px",color:topic===t.label&&!custom?"#c0b8f0":"#a0a098",cursor:"pointer",display:"flex",flexDirection:"column",textAlign:"left",position:"relative",overflow:"hidden",boxShadow:topic===t.label&&!custom?"0 0 24px #534AB722":"none" }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:topic===t.label&&!custom?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
+              <div style={{ position:"absolute",bottom:8,left:14,fontSize:42,fontFamily:"'Playfair Display',serif",color:"#534AB7",opacity:0.14,lineHeight:1,fontWeight:900 }}>"</div>
+              <div style={{ position:"absolute",bottom:8,right:14,fontSize:42,fontFamily:"'Playfair Display',serif",color:G,opacity:0.12,lineHeight:1,fontWeight:900,transform:"rotate(180deg)" }}>"</div>
+              <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:`linear-gradient(90deg,transparent,${topic===t.label&&!custom?"#6058c8":"#2a2a3e"},transparent)` }} />
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,position:"relative",zIndex:1 }}>
-                <span style={{ fontSize:13,color:"#e8e4dc",fontWeight:600 }}>{t.cat}</span>
+                <span style={{ display:"flex",alignItems:"center",gap:8 }}>
+                  <span style={{ fontSize:24,lineHeight:1 }}>{t.cat.split(" ")[0]}</span>
+                  <span style={{ fontSize:13,color:"#e8e4dc",fontWeight:600 }}>{t.cat.split(" ").slice(1).join(" ")}</span>
+                </span>
                 <span style={{ fontSize:11,color:DC[t.d],fontWeight:700,background:DC[t.d]+"18",padding:"2px 10px",borderRadius:20,border:`1px solid ${DC[t.d]}33` }}>{DL[t.d]}</span>
               </div>
               <div style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"4px 8px 0",position:"relative",zIndex:1 }}>
@@ -603,6 +634,8 @@ export default function App() {
             <div key={v} className="hov" onClick={() => setSide(v)}
               style={{ flex:1,background:side===v?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:side===v?"1px solid #6058c8":BDR,borderRadius:14,padding:"22px",cursor:"pointer",display:"flex",alignItems:"center",gap:20,position:"relative",overflow:"hidden",boxShadow:side===v?"0 0 24px #534AB722":"none" }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:side===v?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
+              <div style={{ position:"absolute",top:-40,right:-40,width:140,height:140,borderRadius:"50%",background:`radial-gradient(circle, ${v==="for"?"#4ade80":"#f87171"}10 0%, transparent 70%)` }} />
+              <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:`linear-gradient(90deg,transparent,${side===v?"#6058c8":"#2a2a3e"},transparent)` }} />
               <span style={{ fontSize:40,position:"relative",zIndex:1 }}>{ic}</span>
               <div style={{ position:"relative",zIndex:1 }}>
                 <div style={{ fontSize:20,fontWeight:700,color:"#f0ece4",fontFamily:"'Playfair Display',serif" }}>{ti}</div>
@@ -615,6 +648,8 @@ export default function App() {
             <button key={k} className="hov" onClick={() => setIntensity(k)}
               style={{ flex:1,background:intensity===k?"linear-gradient(135deg,#1a1208,#221808)":"rgba(255,255,255,.025)",border:intensity===k?`1px solid ${G}88`:BDR,borderRadius:12,padding:"18px 22px",cursor:"pointer",textAlign:"left",display:"flex",flexDirection:"column",justifyContent:"center",gap:5,position:"relative",overflow:"hidden",boxShadow:intensity===k?`0 0 20px ${G}18`:"none" }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:intensity===k?`linear-gradient(180deg,${G},transparent)`:"transparent",transition:"all .2s" }} />
+              <div style={{ position:"absolute",top:-40,right:-40,width:140,height:140,borderRadius:"50%",background:`radial-gradient(circle, ${k==="civil"?"#4ade80":k==="sharp"?G:"#f87171"}10 0%, transparent 70%)` }} />
+              <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:`linear-gradient(90deg,transparent,${intensity===k?G:"#2a2a3e"},transparent)` }} />
               <div style={{ fontSize:18,fontWeight:700,color:intensity===k?G:"#a0a098",fontFamily:"'Playfair Display',serif",position:"relative",zIndex:1 }}>{label}</div>
               <div style={{ fontSize:14,color:intensity===k?G+"88":"#5a5868",position:"relative",zIndex:1 }}>{desc}</div>
             </button>
@@ -676,6 +711,7 @@ export default function App() {
   return (
     <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",overflow:"hidden" }}>
       <style>{CSS}</style>
+      {arenaTransition}
       {lvlModal && <LevelUpModal level={lvlModal} onClose={() => setLvlModal(null)} />}
       {confirmLeave && <ConfirmModal
         onSave={() => { setConfirmLeave(false); endDebate(); }}
@@ -688,6 +724,7 @@ export default function App() {
           <button onClick={goHome} className="hov" style={{ fontSize:13,color:G,background:"rgba(201,168,76,.06)",border:`1px solid ${G}33`,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontWeight:600,marginRight:6 }}>← Home</button>
           <span style={{ fontSize:13,fontWeight:600,padding:"4px 14px",borderRadius:20,background:"#0d1f17",color:"#4ade80",border:"1px solid #1a3d2b" }}>YOU: {side === "for" ? "FOR" : "AGAINST"}</span>
           <span style={{ fontSize:13,fontWeight:600,padding:"4px 14px",borderRadius:20,background:"#1e1c2e",color:"#a89eed",border:"1px solid #3d3680" }}>CLAUDE: {side === "for" ? "AGAINST" : "FOR"}</span>
+          {bonusNext && <span style={{ fontSize:12,fontWeight:700,padding:"3px 12px",borderRadius:20,background:"#0d1f17",color:"#4ade80",border:"1px solid #1a3d2b" }}>✨ 2x POINTS</span>}
           {traits.map(id => <span key={id} style={{ fontSize:12,padding:"3px 10px",borderRadius:20,background:"#1a1208",color:G,border:"1px solid #3d2e10" }}>{TRAITS.find(t => t.id === id)?.label}</span>)}
         </div>
         <div style={{ display:"flex",alignItems:"center",gap:16 }}>
@@ -714,6 +751,11 @@ export default function App() {
         {/* CHAT */}
         <div style={{ flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative",background:"linear-gradient(160deg,#0c0c18,#0e0e1c 40%,#0c0e16)" }}>
           {bgArt}
+          {/* Faint arena emblem */}
+          <div style={{ position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",pointerEvents:"none",zIndex:0,textAlign:"center",userSelect:"none" }}>
+            <div style={{ fontSize:200,fontWeight:900,fontFamily:"'Playfair Display',serif",color:"#ffffff",opacity:0.018,lineHeight:1,fontStyle:"italic" }}>VS</div>
+            <div style={{ width:280,height:1,background:"linear-gradient(90deg,transparent,#c9a84c18,transparent)",margin:"8px auto 0" }} />
+          </div>
           <div ref={chatRef} style={{ flex:1,overflowY:"auto",padding:"28px 36px",display:"flex",flexDirection:"column",gap:20,position:"relative",zIndex:1 }}>
             {!debateStarted && !loading && (
               <div style={{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,minHeight:300 }}>
@@ -822,19 +864,20 @@ export default function App() {
             <div style={{ fontSize:15,color:"#f0ece4",lineHeight:1.4,fontWeight:600,fontFamily:"'Playfair Display',serif" }}>"{act}"</div>
           </div>
 
-          {!summary && debateStarted && (
-            <div style={{ padding:"14px 22px",borderBottom:"1px solid #1e1e2e",display:"flex",alignItems:"center",justifyContent:"space-between" }}>
+          {!summary && (
+            <div style={{ padding:"12px 22px",borderBottom:"1px solid #1e1e2e",display:"flex",alignItems:"center",justifyContent:"space-between" }}>
               <div>
                 <div style={{ fontSize:10,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".12em",marginBottom:3 }}>Your Time</div>
-                <div style={{ fontSize:12,color:"#5a5868" }}>Argue before it empties</div>
+                <div style={{ fontSize:12,color:"#5a5868" }}>{debateStarted ? "Per argument" : "Starts with the debate"}</div>
+                {bonusNext && <div style={{ fontSize:11,color:"#4ade80",fontWeight:700,marginTop:4 }}>✨ 2x points active</div>}
               </div>
-              {timerActive && !loading ? <Timer key={timerKey} seconds={timeLimit} onExpire={() => send(true)} /> : (
-                <div style={{ fontSize:22,color:"#2a2a3e",fontWeight:700 }}>—</div>
-              )}
+              {timerActive && !loading && debateStarted
+                ? <Timer key={timerKey} seconds={timeLimit} onExpire={() => send(true)} />
+                : <RingTimer left={timeLimit} total={timeLimit} idle />}
             </div>
           )}
 
-          <div style={{ flex:1,padding:"16px 22px",display:"flex",flexDirection:"column",gap:14,minHeight:0 }}>
+          <div style={{ flex:1,padding:"14px 22px",display:"flex",flexDirection:"column",gap:12,minHeight:0 }}>
             <div>
               <div style={{ fontSize:10,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".12em",marginBottom:8 }}>Argument Score</div>
               {[["🟢","Strong","8-10","#4ade80"],["🟡","Solid","6-7",G],["🟠","Weak","4-5","#fb923c"],["🔴","Poor","1-3","#f87171"]].map(([dot, l, r, col]) => (
@@ -849,6 +892,23 @@ export default function App() {
               {["Use real-world examples","Address Claude's specific point","Ask 'why?' to expose weak logic"].map(tip => (
                 <div key={tip} style={{ fontSize:13,color:"#8a8680",marginBottom:6,padding:"7px 12px",paddingLeft:12,borderLeft:"2px solid #534AB7",background:"rgba(83,74,183,.06)",borderRadius:"0 8px 8px 0",lineHeight:1.4 }}>{tip}</div>
               ))}
+            </div>
+            {/* Live match stats */}
+            <div style={{ flex:1,display:"flex",flexDirection:"column",minHeight:0 }}>
+              <div style={{ fontSize:10,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".12em",marginBottom:8 }}>This Match</div>
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 }}>
+                {[
+                  ["Best", scores.length ? Math.max(...scores) + "/10" : "—", scores.length ? sc(Math.max(...scores)) : "#5a5868"],
+                  ["Last", scores.length ? scores[scores.length-1] + "/10" : "—", scores.length ? sc(scores[scores.length-1]) : "#5a5868"],
+                  ["Hints", maxHints > 0 ? `${hintsLeft} left` : "none", hintsLeft > 0 ? "#a89eed" : "#5a5868"],
+                  ["Timeouts", `${timeouts}/2`, timeouts > 0 ? "#f87171" : "#5a5868"],
+                ].map(([label, val, col]) => (
+                  <div key={label} style={{ padding:"8px 10px",background:"rgba(255,255,255,.02)",border:"1px solid #1e1e2e",borderRadius:8,textAlign:"center" }}>
+                    <div style={{ fontSize:10,color:"#5a5868",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:3 }}>{label}</div>
+                    <div style={{ fontSize:15,fontWeight:700,color:col }}>{val}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
