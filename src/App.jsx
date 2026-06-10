@@ -154,6 +154,16 @@ function pickTopics(rating, exclude = []) {
   return sh(pick).slice(0, 4);
 }
 
+function stripMd(t) {
+  return (t || "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/^#+\s*/gm, "")
+    .replace(/^\s*[-•]\s*/gm, "")
+    .replace(/^\s*\d+\.\s*/gm, "")
+    .trim();
+}
+
 function PulsingOrb() {
   return (
     <div style={{ display:"flex",alignItems:"center",gap:14,padding:"14px 20px",background:"rgba(20,20,32,0.9)",border:"1px solid #2a2a3e",borderRadius:"18px 18px 18px 4px",width:"fit-content",backdropFilter:"blur(12px)" }}>
@@ -180,6 +190,22 @@ function LevelUpModal({ level, onClose }) {
   );
 }
 
+function Typewriter({ text, onTick }) {
+  const [shown, setShown] = useState("");
+  useEffect(() => {
+    setShown("");
+    let i = 0;
+    const id = setInterval(() => {
+      i += 2;
+      setShown(text.slice(0, i));
+      if (onTick) onTick();
+      if (i >= text.length) clearInterval(id);
+    }, 16);
+    return () => clearInterval(id);
+  }, [text]);
+  return <>{shown}<span style={{ opacity: shown.length < text.length ? 1 : 0, color: "#c9a84c" }}>▍</span></>;
+}
+
 function ConfirmModal({ onSave, onDiscard, onCancel }) {
   return (
     <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,animation:"fadeIn .25s ease" }} onClick={onCancel}>
@@ -197,27 +223,27 @@ function ConfirmModal({ onSave, onDiscard, onCancel }) {
   );
 }
 
-// Animated hourglass-style live countdown
+// Animated hourglass with glowing sand
 function Hourglass({ left, total }) {
   const pct = left / total;
   const col = pct > 0.5 ? "#4ade80" : pct > 0.25 ? G : "#f87171";
   const urgent = pct <= 0.25;
-  const topFill = pct;       // sand remaining in top
-  const botFill = 1 - pct;   // sand accumulated in bottom
+  const topFill = pct, botFill = 1 - pct;
   return (
-    <svg width="56" height="72" viewBox="0 0 56 72" style={{ animation: urgent ? "urgentPulse 0.6s ease-in-out infinite" : "none" }}>
-      {/* Glass outline */}
-      <path d="M10 6 L46 6 L46 14 Q46 28 30 34 L30 38 Q46 44 46 58 L46 66 L10 66 L10 58 Q10 44 26 38 L26 34 Q10 28 10 14 Z"
-        fill="rgba(255,255,255,0.02)" stroke="#3a3a4e" strokeWidth="1.5"/>
-      {/* Top sand */}
-      <clipPath id="topClip"><path d="M12 8 L44 8 L44 14 Q44 27 28 33 Q12 27 12 14 Z"/></clipPath>
-      <rect x="8" y={8 + (1-topFill)*26} width="40" height={topFill*26} fill={col} clipPath="url(#topClip)" opacity="0.85" style={{transition:"all 1s linear"}}/>
-      {/* Bottom sand */}
-      <clipPath id="botClip"><path d="M28 39 Q44 45 44 58 L44 64 L12 64 L12 58 Q12 45 28 39 Z"/></clipPath>
-      <rect x="8" y={64 - botFill*25} width="40" height={botFill*25} fill={col} clipPath="url(#botClip)" opacity="0.85" style={{transition:"all 1s linear"}}/>
-      {/* Falling stream */}
-      {left > 0 && left < total && <rect x="27" y="34" width="2" height="6" fill={col} opacity="0.9"/>}
-    </svg>
+    <div style={{ position:"relative",width:60,height:76,display:"flex",alignItems:"center",justifyContent:"center" }}>
+      <div style={{ position:"absolute",inset:0,borderRadius:"50%",background:`radial-gradient(circle, ${col}22 0%, transparent 70%)`,animation:urgent?"hintPulse .6s ease-in-out infinite":"none" }} />
+      <svg width="60" height="76" viewBox="0 0 56 72" style={{ animation: urgent ? "sandShake 0.3s ease-in-out infinite" : "none", position:"relative" }}>
+        <path d="M10 6 L46 6 L46 14 Q46 28 30 34 L30 38 Q46 44 46 58 L46 66 L10 66 L10 58 Q10 44 26 38 L26 34 Q10 28 10 14 Z"
+          fill="rgba(255,255,255,0.02)" stroke={`${col}66`} strokeWidth="1.5"/>
+        <rect x="8" y="4" width="40" height="3.5" rx="1.5" fill={`${col}99`} />
+        <rect x="8" y="64.5" width="40" height="3.5" rx="1.5" fill={`${col}99`} />
+        <clipPath id="topClip"><path d="M12 8 L44 8 L44 14 Q44 27 28 33 Q12 27 12 14 Z"/></clipPath>
+        <rect x="8" y={8 + (1-topFill)*26} width="40" height={topFill*26} fill={col} clipPath="url(#topClip)" opacity="0.9" style={{transition:"all 1s linear"}}/>
+        <clipPath id="botClip"><path d="M28 39 Q44 45 44 58 L44 64 L12 64 L12 58 Q12 45 28 39 Z"/></clipPath>
+        <rect x="8" y={64 - botFill*25} width="40" height={botFill*25} fill={col} clipPath="url(#botClip)" opacity="0.9" style={{transition:"all 1s linear"}}/>
+        {left > 0 && left < total && <rect x="27" y="34" width="2" height="6" fill={col} opacity="0.95"><animate attributeName="opacity" values="0.4;1;0.4" dur="0.6s" repeatCount="indefinite"/></rect>}
+      </svg>
+    </div>
   );
 }
 
@@ -261,6 +287,7 @@ export default function App() {
   const [traits, setTraits]       = useState([]);
   const [showTraits, setShowTraits] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [statsClosing, setStatsClosing] = useState(false);
   const [msgs, setMsgs]           = useState([]);
   const [hist, setHist]           = useState([]);
   const [input, setInput]         = useState("");
@@ -279,6 +306,7 @@ export default function App() {
   const [hintLoading, setHintLoading] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [autoLost, setAutoLost]   = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
   const chatRef = useRef(null);
 
   const act   = custom.trim() || topic;
@@ -296,6 +324,10 @@ export default function App() {
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [msgs, loading, summary]);
 
   const refresh = () => { setTopics(pickTopics(rating, topics.map(t => t.label))); setTopic(""); setCustom(""); };
+  const toggleStats = () => {
+    if (showStats) { setStatsClosing(true); setTimeout(() => { setShowStats(false); setStatsClosing(false); }, 350); }
+    else setShowStats(true);
+  };
   const toggleTrait = id => setTraits(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id]);
 
   const buildSys = (timeoutMode = false) => {
@@ -337,16 +369,22 @@ export default function App() {
     setDebateStarted(true); setLoading(true); setTimerActive(false); setHintsLeft(maxHints);
     try {
       const o = await callClaude([{ role: "user", content: "Open with your strongest single argument." }], buildSys());
-      setHist([{ role: "assistant", content: o }]); setMsgs([{ role: "claude", text: o }]);
-      setTimerKey(k => k + 1); setTimerActive(true);
+      setHist([{ role: "assistant", content: o }]); setMsgs([{ role: "claude", text: o, fresh: true }]);
+      const typeMs = Math.min(o.length * 8 + 300, 6000);
+      setTimerKey(k => k + 1);
+      setTimeout(() => setTimerActive(true), typeMs);
     } catch (e) { setMsgs([{ role: "claude", text: "Error: " + e.message }]); }
     setLoading(false);
   };
 
   const enterArena = () => {
-    setStage("debate"); setMsgs([]); setHist([]); setRound(1); setScores([]);
-    setFallacies({}); setSummary(""); setPrev(null); setDebateStarted(false);
-    setTimerActive(false); setTimeouts(0); setHint(""); setAutoLost(false);
+    setTransitioning(true);
+    setTimeout(() => {
+      setStage("debate"); setMsgs([]); setHist([]); setRound(1); setScores([]);
+      setFallacies({}); setSummary(""); setPrev(null); setDebateStarted(false);
+      setTimerActive(false); setTimeouts(0); setHint(""); setAutoLost(false);
+    }, 700);
+    setTimeout(() => setTransitioning(false), 1400);
   };
 
   const goHome = () => {
@@ -375,12 +413,14 @@ export default function App() {
     const [s, reply] = await Promise.all([scorePromise, callClaude(newH, buildSys(timedOut)).catch(e => "Error: " + e.message)]);
     setScores(x => [...x, s]);
     setHist([...newH, { role: "assistant", content: reply }]);
-    setMsgs(m => [...m, { role: "claude", text: reply, score: s }]);
+    setMsgs(m => [...m.map(x => ({ ...x, fresh: false })), { role: "claude", text: reply, score: s, fresh: true }]);
     setLoading(false);
 
     // Two timeouts = auto loss
     if (newTimeouts >= 2) { setAutoLost(true); setTimeout(() => endDebate(true), 800); return; }
-    setTimerKey(k => k + 1); setTimerActive(true);
+    const typeMs = Math.min(reply.length * 8 + 300, 6000);
+    setTimerKey(k => k + 1);
+    setTimeout(() => setTimerActive(true), typeMs);
   };
 
   const endDebate = async (lost = false) => {
@@ -395,10 +435,10 @@ export default function App() {
     setTrophies(t => [{ topic: act, side, avg: Math.round(a * 10) / 10, delta: d, date: new Date().toLocaleDateString(), rounds: round }, ...t].slice(0, 20));
     try {
       const prompt = lost
-        ? `The user LOST by running out of time twice. Give a short coaching summary (under 100 words). Tone: ${INTENSITY[intensity].coach}. Mention they need to respond faster.`
-        : `Summarize this debate in under 100 words: (1) user's best argument, (2) weakest point, (3) logical mistakes, (4) one tip. Tone: ${INTENSITY[intensity].coach}.`;
-      const s = await callClaude([...hist, { role: "user", content: prompt }], `You are a debate coach. Your feedback style is ${INTENSITY[intensity].coach}.`);
-      setSummary(s);
+        ? `The debate is over — the user lost by running out of time twice. Give them spoken coaching feedback in under 90 words. Mention they need to respond faster.`
+        : `The debate is over. Give the user spoken coaching feedback in under 110 words covering: their strongest moment, their weakest point, any logical mistakes, and one concrete tip to improve.`;
+      const s = await callClaude([...hist, { role: "user", content: prompt }], `You are their debate coach speaking directly to them. Your feedback style is ${INTENSITY[intensity].coach}. Write in flowing natural prose, like you're talking to them — NO markdown, NO asterisks, NO bullet points, NO numbered lists, NO bold headers. Just plain conversational paragraphs. Address them as "you".`);
+      setSummary(stripMd(s));
     } catch (e) { setSummary("Could not generate summary: " + e.message); }
     setSumLoading(false);
   };
@@ -414,16 +454,34 @@ export default function App() {
     @keyframes urgentPulse{0%,100%{opacity:1}50%{opacity:.45}}
     @keyframes fadeIn{from{opacity:0}to{opacity:1}}
     @keyframes drawerDown{from{opacity:0;max-height:0;transform:translateY(-10px)}to{opacity:1;max-height:400px;transform:translateY(0)}}
+    @keyframes drawerUp{from{opacity:1;max-height:400px;transform:translateY(0)}to{opacity:0;max-height:0;transform:translateY(-10px)}}
     @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+    @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+    @keyframes hintPulse{0%,100%{opacity:.4}50%{opacity:1}}
+    @keyframes sandShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-0.6px)}75%{transform:translateX(0.6px)}}
+    @keyframes arenaFlash{0%{opacity:0}15%{opacity:1}55%{opacity:1}100%{opacity:0}}
+    @keyframes arenaText{0%{opacity:0;transform:scale(.8) translateY(10px);letter-spacing:.1em}30%{opacity:1;transform:scale(1) translateY(0);letter-spacing:.35em}75%{opacity:1;transform:scale(1) translateY(0);letter-spacing:.35em}100%{opacity:0;transform:scale(1.1);letter-spacing:.6em}}
+    @keyframes swordSlash{0%{transform:translateX(-120%) rotate(-12deg);opacity:0}40%{opacity:1}100%{transform:translateX(120%) rotate(-12deg);opacity:0}}
     .mi{animation:msgIn .4s cubic-bezier(.2,.8,.2,1) forwards}
     .drawer{animation:drawerDown .4s cubic-bezier(.2,.8,.2,1) forwards;overflow:hidden}
     .hov{transition:all .15s ease;cursor:pointer}
     .hov:hover{opacity:.9;transform:translateY(-2px)}
     .bhov{transition:all .15s ease;cursor:pointer}
     .bhov:hover{filter:brightness(1.08);transform:translateY(-1px)}
+    .hint-loading{background:linear-gradient(90deg,#534AB733 25%,#a89eed44 50%,#534AB733 75%);background-size:200% 100%;animation:shimmer 1.2s linear infinite}
     input:focus,textarea:focus{outline:none;border-color:#c9a84c!important;box-shadow:0 0 0 3px #c9a84c18!important}
     ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px}
   `;
+
+  const arenaTransition = transitioning && (
+    <div style={{ position:"fixed",inset:0,zIndex:500,background:"radial-gradient(circle at center, #1a1208, #0a0a0f 70%)",display:"flex",alignItems:"center",justifyContent:"center",animation:"arenaFlash 1.4s ease-in-out forwards",overflow:"hidden" }}>
+      <div style={{ position:"absolute",top:"50%",left:0,width:"100%",height:3,background:`linear-gradient(90deg,transparent,${G},transparent)`,animation:"swordSlash 1.4s ease-in-out forwards",boxShadow:`0 0 20px ${G}` }} />
+      <div style={{ textAlign:"center",animation:"arenaText 1.4s ease-in-out forwards" }}>
+        <div style={{ fontSize:56,marginBottom:12 }}>⚔️</div>
+        <div style={{ fontSize:34,fontWeight:900,color:G,fontFamily:"'Playfair Display',serif",textTransform:"uppercase" }}>Enter the Arena</div>
+      </div>
+    </div>
+  );
 
   const bgArt = (
     <div style={{ position:"absolute",inset:0,pointerEvents:"none",zIndex:0,overflow:"hidden" }}>
@@ -441,6 +499,7 @@ export default function App() {
   if (stage === "setup") return (
     <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(135deg,#0c0c14,#0e0e1a 50%,#0c0e14)" }}>
       <style>{CSS}</style>
+      {arenaTransition}
       {lvlModal && <LevelUpModal level={lvlModal} onClose={() => setLvlModal(null)} />}
       {bgArt}
 
@@ -464,13 +523,13 @@ export default function App() {
             </div>
             {nxt && <div style={{ fontSize:11,color:"#5a5868",marginTop:3,textAlign:"center",fontWeight:500 }}>{nxt.min - rating} pts to {nxt.name}</div>}
           </div>
-          <button onClick={() => setShowStats(s => !s)} className="hov" style={{ background:"rgba(255,255,255,.04)",border:BDR,borderRadius:8,padding:"8px 16px",fontSize:13,color:"#9a9690",cursor:"pointer",fontWeight:500 }}>{showStats ? "▾ Stats" : "▸ My Stats"}</button>
+          <button onClick={toggleStats} className="hov" style={{ background:"rgba(255,255,255,.04)",border:BDR,borderRadius:8,padding:"8px 16px",fontSize:13,color:"#9a9690",cursor:"pointer",fontWeight:500 }}>{showStats && !statsClosing ? "▾ Stats" : "▸ My Stats"}</button>
         </div>
       </div>
 
       {/* STATS DRAWER */}
       {showStats && (
-        <div className="drawer" style={{ background:"rgba(10,10,18,0.97)",borderBottom:BDR,padding:"20px 44px",display:"flex",gap:48,flexShrink:0,zIndex:2,position:"relative",backdropFilter:"blur(20px)" }}>
+        <div className="drawer" style={{ background:"rgba(10,10,18,0.97)",borderBottom:BDR,padding:"20px 44px",display:"flex",gap:48,flexShrink:0,zIndex:2,position:"relative",backdropFilter:"blur(20px)",animation:statsClosing?"drawerUp .35s cubic-bezier(.4,0,.6,1) forwards":"drawerDown .4s cubic-bezier(.2,.8,.2,1) forwards" }}>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,marginBottom:14 }}>Recent Debates</div>
             {trophies.length === 0 && <p style={{ fontSize:13,color:"#5a5868" }}>No debates yet. Enter the arena to begin.</p>}
@@ -511,7 +570,7 @@ export default function App() {
           {topics.map(t => (
             <button key={t.label} className="hov" onClick={() => { setTopic(t.label); setCustom(""); }}
               style={{ flex:1,background:topic===t.label&&!custom?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:topic===t.label&&!custom?"1px solid #6058c8":BDR,borderRadius:12,padding:"16px 18px",color:topic===t.label&&!custom?"#c0b8f0":"#a0a098",cursor:"pointer",display:"flex",flexDirection:"column",textAlign:"left",position:"relative",overflow:"hidden",boxShadow:topic===t.label&&!custom?"0 0 24px #534AB722":"none" }}>
-              <div style={{ position:"absolute",top:-20,right:-10,fontSize:80,opacity:0.04,transform:"rotate(-12deg)" }}>{t.cat.split(" ")[0]}</div>
+              <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:topic===t.label&&!custom?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,position:"relative",zIndex:1 }}>
                 <span style={{ fontSize:13,color:"#e8e4dc",fontWeight:600 }}>{t.cat}</span>
                 <span style={{ fontSize:11,color:DC[t.d],fontWeight:700,background:DC[t.d]+"18",padding:"2px 10px",borderRadius:20,border:`1px solid ${DC[t.d]}33` }}>{DL[t.d]}</span>
@@ -543,7 +602,7 @@ export default function App() {
             ["against","👎","I'm AGAINST it","You argue against — Claude argues in favor"]].map(([v, ic, ti, de]) => (
             <div key={v} className="hov" onClick={() => setSide(v)}
               style={{ flex:1,background:side===v?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:side===v?"1px solid #6058c8":BDR,borderRadius:14,padding:"22px",cursor:"pointer",display:"flex",alignItems:"center",gap:20,position:"relative",overflow:"hidden",boxShadow:side===v?"0 0 24px #534AB722":"none" }}>
-              <div style={{ position:"absolute",bottom:-30,right:-10,fontSize:120,opacity:0.04 }}>{ic}</div>
+              <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:side===v?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
               <span style={{ fontSize:40,position:"relative",zIndex:1 }}>{ic}</span>
               <div style={{ position:"relative",zIndex:1 }}>
                 <div style={{ fontSize:20,fontWeight:700,color:"#f0ece4",fontFamily:"'Playfair Display',serif" }}>{ti}</div>
@@ -555,7 +614,7 @@ export default function App() {
           {Object.entries(INTENSITY).map(([k, { label, desc }]) => (
             <button key={k} className="hov" onClick={() => setIntensity(k)}
               style={{ flex:1,background:intensity===k?"linear-gradient(135deg,#1a1208,#221808)":"rgba(255,255,255,.025)",border:intensity===k?`1px solid ${G}88`:BDR,borderRadius:12,padding:"18px 22px",cursor:"pointer",textAlign:"left",display:"flex",flexDirection:"column",justifyContent:"center",gap:5,position:"relative",overflow:"hidden",boxShadow:intensity===k?`0 0 20px ${G}18`:"none" }}>
-              <div style={{ position:"absolute",bottom:-25,right:-5,fontSize:90,opacity:0.04 }}>{label.split(" ")[0]}</div>
+              <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:intensity===k?`linear-gradient(180deg,${G},transparent)`:"transparent",transition:"all .2s" }} />
               <div style={{ fontSize:18,fontWeight:700,color:intensity===k?G:"#a0a098",fontFamily:"'Playfair Display',serif",position:"relative",zIndex:1 }}>{label}</div>
               <div style={{ fontSize:14,color:intensity===k?G+"88":"#5a5868",position:"relative",zIndex:1 }}>{desc}</div>
             </button>
@@ -580,15 +639,16 @@ export default function App() {
           )}
           <div style={{ flex:1,background:"rgba(255,255,255,.02)",border:BDR,borderRadius:14,padding:"24px 28px",display:"flex",flexDirection:"column" }}>
             <div style={{ fontSize:11,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".14em",textAlign:"center",marginBottom:6,paddingBottom:14,borderBottom:BDR }}>How Scoring Works</div>
-            <div style={{ flex:1,display:"flex",flexDirection:"column",justifyContent:"space-evenly" }}>
+            <div style={{ flex:1,display:"flex",flexDirection:"column",justifyContent:"space-evenly",gap:10 }}>
               {[["🟢","Strong (8-10)","#4ade80","Gain the most points"],
                 ["🟡","Solid (6-7)",G,"Gain some points"],
                 ["🟠","Weak (4-5)","#fb923c","Break even"],
                 ["🔴","Poor (1-3)","#f87171","Lose points"]].map(([dot, label, col, explain]) => (
-                <div key={label} style={{ display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",gap:4,padding:"10px 0",borderBottom:"1px solid #1e1e2e" }}>
-                  <span style={{ fontSize:24 }}>{dot}</span>
+                <div key={label} className="hov" style={{ display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",gap:3,padding:"12px 8px",borderRadius:12,background:`linear-gradient(135deg, ${col}10, transparent)`,border:`1px solid ${col}22`,position:"relative",overflow:"hidden" }}>
+                  <div style={{ position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,transparent,${col},transparent)`,opacity:0.5 }} />
+                  <span style={{ fontSize:24,filter:`drop-shadow(0 0 8px ${col}66)` }}>{dot}</span>
                   <div style={{ fontSize:16,color:col,fontWeight:700 }}>{label}</div>
-                  <div style={{ fontSize:13,color:"#6b6860" }}>{explain}</div>
+                  <div style={{ fontSize:13,color:"#8a8680" }}>{explain}</div>
                 </div>
               ))}
             </div>
@@ -669,7 +729,10 @@ export default function App() {
               <div key={i} className="mi" style={{ display:"flex",flexDirection:"column",alignItems:m.role==="user"?"flex-end":"flex-start",alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"68%" }}>
                 <div style={{ fontSize:11,color:"#5a5868",marginBottom:6,letterSpacing:".08em",textTransform:"uppercase",textAlign:m.role==="user"?"right":"left",fontWeight:600 }}>{m.role === "user" ? "You" : "Claude"}</div>
                 <div style={{ padding:"16px 20px",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",fontSize:16,lineHeight:1.75,background:m.role==="user"?`linear-gradient(135deg,#c9a84c,#b8962e)`:"rgba(20,20,32,0.92)",color:m.role==="user"?"#0a0a0f":"#d4d0c8",border:m.role==="user"?"none":"1px solid #1e1e2e",backdropFilter:m.role==="user"?"none":"blur(12px)",boxShadow:m.role==="user"?"0 4px 20px #c9a84c33":"0 4px 20px rgba(0,0,0,0.4)",fontWeight:m.role==="user"?500:400 }}>
-                  {m.timedOut ? <span style={{ color:"#7a2020",fontStyle:"italic",fontWeight:600 }}>⏱ Time ran out</span> : m.text}
+                  {m.timedOut ? <span style={{ color:"#7a2020",fontStyle:"italic",fontWeight:600 }}>⏱ Time ran out</span>
+                    : (m.role === "claude" && m.fresh)
+                      ? <Typewriter text={m.text} onTick={() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }} />
+                      : m.text}
                 </div>
                 {m.role === "user" && !m.timedOut && m.score != null && (
                   <div style={{ display:"flex",alignItems:"center",gap:8,marginTop:7 }}>
@@ -690,23 +753,47 @@ export default function App() {
                 <PulsingOrb />
               </div>
             )}
+            {sumLoading && (
+              <div className="mi" style={{ display:"flex",flexDirection:"column",alignItems:"flex-start",alignSelf:"flex-start",maxWidth:"68%" }}>
+                <div style={{ fontSize:11,color:"#a89eed",marginBottom:6,letterSpacing:".08em",textTransform:"uppercase",fontWeight:600 }}>{autoLost ? "💀 Final Verdict" : "📋 Coach"}</div>
+                <div style={{ display:"flex",alignItems:"center",gap:12,padding:"16px 20px",background:"rgba(20,20,32,0.92)",border:"1px solid #2a2a55",borderRadius:"18px 18px 18px 4px",backdropFilter:"blur(12px)" }}>
+                  {[0,1,2].map(i => <div key={i} style={{ width:8,height:8,borderRadius:"50%",background:"#a89eed",animation:`hintPulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
+                  <span style={{ fontSize:14,color:"#8a8680",fontStyle:"italic",marginLeft:4 }}>Reviewing your performance…</span>
+                </div>
+              </div>
+            )}
             {summary && (
-              <div className="mi" style={{ background:"rgba(14,14,26,0.95)",border:`1px solid ${autoLost?"#7f1d1d":"#2a2a55"}`,borderRadius:16,padding:"24px 28px",backdropFilter:"blur(12px)",boxShadow:"0 8px 32px rgba(0,0,0,.4)" }}>
-                <div style={{ fontSize:12,fontWeight:700,color:autoLost?"#f87171":"#a89eed",marginBottom:14,letterSpacing:".12em",textTransform:"uppercase" }}>{autoLost ? "💀 Defeat — Coaching" : "📋 Debate Summary & Coaching"}</div>
-                <p style={{ fontSize:16,color:"#c8c4b8",lineHeight:1.8,margin:"0 0 16px" }}>{summary}</p>
-                <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between" }}>
+              <div className="mi" style={{ display:"flex",flexDirection:"column",alignItems:"flex-start",alignSelf:"flex-start",maxWidth:"72%" }}>
+                <div style={{ fontSize:11,color:autoLost?"#f87171":"#a89eed",marginBottom:6,letterSpacing:".08em",textTransform:"uppercase",fontWeight:600 }}>{autoLost ? "💀 Final Verdict" : "📋 Coach's Feedback"}</div>
+                <div style={{ padding:"18px 22px",borderRadius:"18px 18px 18px 4px",fontSize:16,lineHeight:1.8,background:"rgba(20,20,32,0.92)",color:"#d4d0c8",border:`1px solid ${autoLost?"#7f1d1d":"#2a2a55"}`,backdropFilter:"blur(12px)",boxShadow:"0 4px 20px rgba(0,0,0,0.4)" }}>
+                  <Typewriter text={summary} onTick={() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }} />
+                </div>
+                <div style={{ display:"flex",alignItems:"center",gap:20,marginTop:14,padding:"12px 18px",background:"rgba(255,255,255,.02)",border:BDR,borderRadius:12 }}>
                   <span style={{ fontSize:14,color:"#6b6860" }}>Avg: <span style={{ color:sc(avg),fontWeight:700 }}>{avg}/10</span>{delta !== null && <span style={{ marginLeft:8,color:delta>=0?"#4ade80":"#f87171",fontWeight:700 }}>{delta>=0?"+":""}{delta} pts</span>}</span>
-                  <button onClick={() => setStage("setup")} style={{ padding:"10px 24px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:9,fontSize:14,fontWeight:700,cursor:"pointer" }}>New Debate →</button>
+                  <button onClick={() => setStage("setup")} className="bhov" style={{ padding:"10px 24px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:9,fontSize:14,fontWeight:700,cursor:"pointer" }}>New Debate →</button>
                 </div>
               </div>
             )}
           </div>
 
+          {/* Hint loading shimmer */}
+          {hintLoading && !summary && (
+            <div className="mi" style={{ margin:"0 36px 4px",padding:"14px 18px",borderRadius:12,position:"relative",zIndex:1,border:"1px solid #534AB744" }} >
+              <div className="hint-loading" style={{ position:"absolute",inset:0,borderRadius:12,opacity:0.5 }} />
+              <div style={{ position:"relative",display:"flex",alignItems:"center",gap:12 }}>
+                <div style={{ display:"flex",gap:5 }}>
+                  {[0,1,2].map(i => <div key={i} style={{ width:7,height:7,borderRadius:"50%",background:"#a89eed",animation:`hintPulse 1.1s ease-in-out ${i*0.18}s infinite` }} />)}
+                </div>
+                <span style={{ fontSize:14,color:"#a89eed",fontWeight:500 }}>Crafting a hint for you…</span>
+              </div>
+            </div>
+          )}
+
           {/* Hint banner */}
           {hint && !summary && (
             <div className="mi" style={{ margin:"0 36px 4px",padding:"14px 18px",background:"rgba(83,74,183,0.1)",border:"1px solid #534AB744",borderRadius:12,position:"relative",zIndex:1 }}>
               <div style={{ fontSize:11,fontWeight:700,color:"#a89eed",textTransform:"uppercase",letterSpacing:".1em",marginBottom:6 }}>💡 Hint</div>
-              <div style={{ fontSize:15,color:"#c8c4b8",lineHeight:1.6 }}>{hint}</div>
+              <div style={{ fontSize:15,color:"#c8c4b8",lineHeight:1.6 }}><Typewriter text={hint} /></div>
             </div>
           )}
 
@@ -716,7 +803,7 @@ export default function App() {
               {maxHints > 0 && (
                 <button onClick={getHint} disabled={hintsLeft<=0||hintLoading||loading} className={hintsLeft>0?"bhov":""}
                   style={{ height:"52px",padding:"0 18px",background:hintsLeft>0?"rgba(83,74,183,0.12)":"rgba(255,255,255,.03)",color:hintsLeft>0?"#a89eed":"#3a3a4e",border:`1px solid ${hintsLeft>0?"#534AB755":"#1e1e2e"}`,borderRadius:12,fontSize:14,fontWeight:600,cursor:hintsLeft>0&&!hintLoading?"pointer":"not-allowed",flexShrink:0,whiteSpace:"nowrap" }}>
-                  💡 {hintLoading ? "…" : `Hint (${hintsLeft})`}
+                  💡 {`Hint (${hintsLeft})`}
                 </button>
               )}
               <textarea value={input} onChange={e => setInput(e.target.value)}
