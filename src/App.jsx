@@ -132,6 +132,24 @@ const INTENSITY = {
   ruthless: { label:"🔥 Ruthless",desc:"Brutal and relentless",prompt:"Be relentless. Find every flaw. Be blunt and unyielding. Do not soften your rebuttals.",timeout:"The user ran out of time. Mock them mercilessly for failing to respond in time, then drive your point home brutally.",coach:"brutal, cutting, and merciless (but still genuinely useful)" },
 };
 
+const QUOTES = [
+  { t: "The aim of argument should be progress, not victory.", a: "Karl Popper" },
+  { t: "It is the mark of an educated mind to entertain a thought without accepting it.", a: "Aristotle" },
+  { t: "He who knows only his own side of the case knows little of it.", a: "John Stuart Mill" },
+  { t: "I may not agree with you, but I will defend to the death your right to make an ass of yourself.", a: "Oscar Wilde" },
+  { t: "Whenever you find yourself on the side of the majority, it is time to pause and reflect.", a: "Mark Twain" },
+  { t: "The first principle is that you must not fool yourself, and you are the easiest person to fool.", a: "Richard Feynman" },
+  { t: "If you can't explain it simply, you don't understand it well enough.", a: "Albert Einstein" },
+  { t: "Argument is meant to reveal the truth, not to create it.", a: "Edward de Bono" },
+  { t: "Those who cannot change their minds cannot change anything.", a: "George Bernard Shaw" },
+  { t: "When the debate is lost, slander becomes the tool of the loser.", a: "Socrates" },
+  { t: "Doubt is not a pleasant condition, but certainty is absurd.", a: "Voltaire" },
+  { t: "The truth is rarely pure and never simple.", a: "Oscar Wilde" },
+  { t: "Honest disagreement is often a good sign of progress.", a: "Mahatma Gandhi" },
+  { t: "A wise man proportions his belief to the evidence.", a: "David Hume" },
+  { t: "To argue with a person who has renounced reason is like giving medicine to the dead.", a: "Thomas Paine" },
+];
+
 const getLevel = r => LEVELS.find(l => r >= l.min && r < l.max) || LEVELS[LEVELS.length - 1];
 const getMaxDiff = r => r < 400 ? 2 : r < 900 ? 3 : r < 2500 ? 4 : 5;
 const loadSt = () => { try { const s = localStorage.getItem("da_v4"); return s ? JSON.parse(s) : null; } catch { return null; } };
@@ -304,6 +322,9 @@ export default function App() {
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [autoLost, setAutoLost]   = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+  const [pendingResult, setPendingResult] = useState(null); // {delta, oldRating, newRating, newLevel, deranked, bonusEarned}
+  const [pointsRevealed, setPointsRevealed] = useState(false);
   const chatRef = useRef(null);
 
   const act   = custom.trim() || topic;
@@ -322,7 +343,7 @@ export default function App() {
 
   const refresh = () => { setTopics(pickTopics(rating, topics.map(t => t.label))); setTopic(""); setCustom(""); };
   const toggleStats = () => {
-    if (showStats) { setStatsClosing(true); setTimeout(() => { setShowStats(false); setStatsClosing(false); }, 620); }
+    if (showStats) { setStatsClosing(true); setTimeout(() => { setShowStats(false); setStatsClosing(false); }, 540); }
     else setShowStats(true);
   };
   const toggleTrait = id => setTraits(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id]);
@@ -380,6 +401,7 @@ export default function App() {
       setStage("debate"); setMsgs([]); setHist([]); setRound(1); setScores([]);
       setFallacies({}); setSummary(""); setPrev(null); setDebateStarted(false);
       setTimerActive(false); setTimeouts(0); setHint(""); setAutoLost(false);
+      setPendingResult(null); setPointsRevealed(false);
     }, 950);
     setTimeout(() => setTransitioning(false), 2000);
   };
@@ -400,7 +422,7 @@ export default function App() {
     if (timedOut) { newTimeouts = timeouts + 1; setTimeouts(newTimeouts); }
 
     const idx = msgs.length;
-    setMsgs(m => [...m, { role: "user", text: txt, timedOut }]);
+    setMsgs(m => [...m.map(x => ({ ...x, fresh: false })), { role: "user", text: txt, timedOut }]);
     if (!timedOut) detectF(txt, idx);
     const newH = [...hist, { role: "user", content: timedOut ? "[I ran out of time and didn't respond]" : txt }];
     setHist(newH); setRound(r => r + 1); setLoading(true);
@@ -410,7 +432,14 @@ export default function App() {
     const [s, reply] = await Promise.all([scorePromise, callClaude(newH, buildSys(timedOut)).catch(e => "Error: " + e.message)]);
     setScores(x => [...x, s]);
     setHist([...newH, { role: "assistant", content: reply }]);
-    setMsgs(m => [...m.map(x => ({ ...x, fresh: false })), { role: "claude", text: reply, score: s, fresh: true }]);
+    setMsgs(m => {
+      // attach the score to the user message we just added, mark claude reply fresh
+      const copy = m.map(x => ({ ...x, fresh: false }));
+      for (let j = copy.length - 1; j >= 0; j--) {
+        if (copy[j].role === "user" && copy[j].score == null) { copy[j] = { ...copy[j], score: s }; break; }
+      }
+      return [...copy, { role: "claude", text: reply, fresh: true }];
+    });
     setLoading(false);
 
     // Two timeouts = auto loss
@@ -436,15 +465,18 @@ export default function App() {
     // 2x bonus from a previous 9+ debate applies to positive gains only
     const bonusApplied = bonusNext && d > 0;
     if (bonusApplied) d *= 2;
-    if (bonusNext) setBonusNext(false);
-    // Earn the bonus for next time with a 9+ average
-    if (participated && !lost && a >= 9) setBonusNext(true);
+    const bonusEarned = participated && !lost && a >= 9;
 
     const old = rating, nw = Math.max(0, old + d);
-    setPrev(old); setRating(nw);
     const ol = getLevel(old), nl = getLevel(nw);
-    if (nl.name !== ol.name) setLvlModal({ ...nl, deranked: nw < old });
-    setTrophies(t => [{ topic: act, side, avg: Math.round(a * 10) / 10, delta: d, date: new Date().toLocaleDateString(), rounds: round }, ...t].slice(0, 20));
+
+    // Store the result but DON'T apply it yet — wait for the reveal button
+    setPendingResult({
+      delta: d, oldRating: old, newRating: nw, avg: Math.round(a * 10) / 10,
+      levelChanged: nl.name !== ol.name, newLevel: nl, deranked: nw < old,
+      bonusApplied, bonusEarned, rounds: round,
+    });
+    setPointsRevealed(false);
 
     if (!participated) {
       // No arguments were made — don't ask the API to invent feedback
@@ -459,13 +491,31 @@ export default function App() {
     }
 
     try {
-      const prompt = lost
-        ? `The debate is over — the user lost by running out of time twice. Give them spoken coaching feedback in under 90 words. Mention they need to respond faster.`
-        : `The debate is over. Give the user spoken coaching feedback in under 110 words covering: their strongest moment, their weakest point, any logical mistakes, and one concrete tip to improve. Base it ONLY on arguments the user actually wrote — do not invent anything.`;
-      const s = await callClaude([...hist, { role: "user", content: prompt }], `You are their debate coach speaking directly to them. Your feedback style is ${INTENSITY[intensity].coach}. Write in flowing natural prose, like you're talking to them — NO markdown, NO asterisks, NO bullet points, NO numbered lists, NO bold headers. Just plain conversational paragraphs. Address them as "you".`);
+      const userSide = side === "for" ? "in favor of" : "against";
+      const claudeSide = side === "for" ? "against" : "in favor of";
+      const transcript = hist.map(m =>
+        m.role === "user" ? `THE STUDENT (arguing ${userSide}): ${m.content}`
+                          : `THE OPPONENT (arguing ${claudeSide}): ${m.content}`
+      ).join("\n\n");
+      const task = lost
+        ? `The student lost by running out of time twice. In under 90 words, coach THE STUDENT — tell them they need to respond faster and engage. Speak to the student as "you".`
+        : `In under 110 words, coach THE STUDENT on THEIR OWN arguments only (the lines marked "THE STUDENT"). Cover: their strongest moment, their weakest point, any logical mistakes THEY made, and one concrete tip. Speak to the student as "you". Do NOT praise or critique the opponent — only the student.`;
+      const prompt = `Topic: "${act}". Here is the debate transcript:\n\n${transcript}\n\n${task}`;
+      const s = await callClaude([{ role: "user", content: prompt }], `You are a debate coach reviewing a student's performance. Your feedback style is ${INTENSITY[intensity].coach}. You are evaluating ONLY "THE STUDENT" — never the opponent. Write flowing natural prose — NO markdown, NO asterisks, NO bullet points, NO numbered lists, NO headers. Address the student as "you".`);
       setSummary(stripMd(s));
     } catch (e) { setSummary("Could not generate summary: " + e.message); }
     setSumLoading(false);
+  };
+
+  const revealPoints = () => {
+    if (!pendingResult || pointsRevealed) return;
+    const r = pendingResult;
+    setPrev(r.oldRating);
+    setRating(r.newRating);
+    setTrophies(t => [{ topic: act, side, avg: r.avg, delta: r.delta, date: new Date().toLocaleDateString(), rounds: r.rounds }, ...t].slice(0, 20));
+    setBonusNext(r.bonusEarned); // clears old bonus, sets new one if earned
+    if (r.levelChanged) setTimeout(() => setLvlModal({ ...r.newLevel, deranked: r.deranked }), 600);
+    setPointsRevealed(true);
   };
 
   const CSS = `
@@ -478,11 +528,12 @@ export default function App() {
     @keyframes msgIn{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
     @keyframes urgentPulse{0%,100%{opacity:1}50%{opacity:.45}}
     @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-    @keyframes drawerDown{from{opacity:0;max-height:0;transform:translateY(-16px)}60%{opacity:.7}to{opacity:1;max-height:400px;transform:translateY(0)}}
-    @keyframes drawerUp{from{opacity:1;max-height:400px;transform:translateY(0)}40%{opacity:.7}to{opacity:0;max-height:0;transform:translateY(-16px)}}
+    @keyframes drawerDown{from{opacity:0;transform:translateY(-100%)}to{opacity:1;transform:translateY(0)}}
+    @keyframes drawerUp{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-100%)}}
     @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
     @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
     @keyframes hintPulse{0%,100%{opacity:.4}50%{opacity:1}}
+    @keyframes revealGlow{0%,100%{box-shadow:0 4px 18px #c9a84c44}50%{box-shadow:0 4px 28px #c9a84c88,0 0 12px #c9a84c66}}
     @keyframes sandShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-0.6px)}75%{transform:translateX(0.6px)}}
     @keyframes arenaFlash{0%{opacity:0}12%{opacity:1}70%{opacity:1}100%{opacity:0}}
     @keyframes arenaText{0%{opacity:0;transform:scale(.8) translateY(10px);letter-spacing:.1em}30%{opacity:1;transform:scale(1) translateY(0);letter-spacing:.35em}75%{opacity:1;transform:scale(1) translateY(0);letter-spacing:.35em}100%{opacity:0;transform:scale(1.1);letter-spacing:.6em}}
@@ -554,7 +605,8 @@ export default function App() {
 
       {/* STATS DRAWER */}
       {showStats && (
-        <div className="drawer" style={{ background:"rgba(10,10,18,0.97)",borderBottom:BDR,padding:"20px 44px",display:"flex",gap:48,flexShrink:0,zIndex:2,position:"relative",backdropFilter:"blur(20px)",animation:statsClosing?"drawerUp .65s cubic-bezier(.45,.05,.35,1) forwards":"drawerDown .7s cubic-bezier(.45,.05,.35,1) forwards" }}>
+        <div style={{ flexShrink:0,overflow:"hidden",position:"relative",zIndex:2 }}>
+        <div className="drawer" style={{ background:"rgba(10,10,18,0.97)",borderBottom:BDR,padding:"20px 44px",display:"flex",gap:48,backdropFilter:"blur(20px)",animation:statsClosing?"drawerUp .55s cubic-bezier(.4,0,.2,1) forwards":"drawerDown .55s cubic-bezier(.16,1,.3,1) forwards" }}>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,marginBottom:14 }}>Recent Debates</div>
             {trophies.length === 0 && <p style={{ fontSize:13,color:"#5a5868" }}>No debates yet. Enter the arena to begin.</p>}
@@ -582,6 +634,7 @@ export default function App() {
             })}
           </div>
         </div>
+        </div>
       )}
 
       {/* 3 COLUMNS */}
@@ -589,25 +642,21 @@ export default function App() {
         {/* LEFT */}
         <div style={{ flex:1,borderRight:BDR,display:"flex",flexDirection:"column",padding:"28px 36px",gap:10 }}>
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}>
-            <span style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G }}>Choose a Topic</span>
+            <span style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G }}>Pick Your Battleground</span>
             <button onClick={refresh} className="hov" style={{ background:"rgba(255,255,255,.04)",border:BDR,borderRadius:7,padding:"5px 14px",fontSize:15,color:"#6b6860",cursor:"pointer" }}>↻</button>
           </div>
-          {topics.map(t => (
+          {topics.map((t, ti) => (
             <button key={t.label} className="hov" onClick={() => { setTopic(t.label); setCustom(""); }}
               style={{ flex:1,background:topic===t.label&&!custom?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:topic===t.label&&!custom?"1px solid #6058c8":BDR,borderRadius:12,padding:"16px 18px",color:topic===t.label&&!custom?"#c0b8f0":"#a0a098",cursor:"pointer",display:"flex",flexDirection:"column",textAlign:"left",position:"relative",overflow:"hidden",boxShadow:topic===t.label&&!custom?"0 0 24px #534AB722":"none" }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:topic===t.label&&!custom?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
-              <div style={{ position:"absolute",bottom:8,left:14,fontSize:42,fontFamily:"'Playfair Display',serif",color:"#534AB7",opacity:0.14,lineHeight:1,fontWeight:900 }}>"</div>
-              <div style={{ position:"absolute",bottom:8,right:14,fontSize:42,fontFamily:"'Playfair Display',serif",color:G,opacity:0.12,lineHeight:1,fontWeight:900,transform:"rotate(180deg)" }}>"</div>
-              <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:`linear-gradient(90deg,transparent,${topic===t.label&&!custom?"#6058c8":"#2a2a3e"},transparent)` }} />
+              <div style={{ position:"absolute",top:"50%",right:18,transform:"translateY(-50%)",fontSize:88,lineHeight:1,opacity:topic===t.label&&!custom?0.16:0.07,filter:"saturate(1.2)",transition:"opacity .2s",pointerEvents:"none" }}>{t.cat.split(" ")[0]}</div>
+              <div style={{ position:"absolute",bottom:0,left:"8%",right:"8%",height:1,background:`linear-gradient(90deg,transparent,${topic===t.label&&!custom?"#6058c8":"#2a2a3e"},transparent)` }} />
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,position:"relative",zIndex:1 }}>
-                <span style={{ display:"flex",alignItems:"center",gap:8 }}>
-                  <span style={{ fontSize:24,lineHeight:1 }}>{t.cat.split(" ")[0]}</span>
-                  <span style={{ fontSize:13,color:"#e8e4dc",fontWeight:600 }}>{t.cat.split(" ").slice(1).join(" ")}</span>
-                </span>
+                <span style={{ fontSize:12,color:"#9a9690",fontWeight:700,letterSpacing:".06em",textTransform:"uppercase" }}>{t.cat.split(" ").slice(1).join(" ")}</span>
                 <span style={{ fontSize:11,color:DC[t.d],fontWeight:700,background:DC[t.d]+"18",padding:"2px 10px",borderRadius:20,border:`1px solid ${DC[t.d]}33` }}>{DL[t.d]}</span>
               </div>
-              <div style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"4px 8px 0",position:"relative",zIndex:1 }}>
-                <span style={{ fontSize:17,lineHeight:1.5,fontFamily:"'Playfair Display',serif" }}>{t.label}</span>
+              <div style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"flex-start",textAlign:"left",padding:"4px 0 0",position:"relative",zIndex:1 }}>
+                <span style={{ fontSize:19,lineHeight:1.4,fontFamily:"'Playfair Display',serif",fontWeight:700,color:topic===t.label&&!custom?"#f0ece4":"#d4d0c8" }}>{t.label}</span>
               </div>
             </button>
           ))}
@@ -634,7 +683,8 @@ export default function App() {
             <div key={v} className="hov" onClick={() => setSide(v)}
               style={{ flex:1,background:side===v?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:side===v?"1px solid #6058c8":BDR,borderRadius:14,padding:"22px",cursor:"pointer",display:"flex",alignItems:"center",gap:20,position:"relative",overflow:"hidden",boxShadow:side===v?"0 0 24px #534AB722":"none" }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:side===v?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
-              <div style={{ position:"absolute",top:-40,right:-40,width:140,height:140,borderRadius:"50%",background:`radial-gradient(circle, ${v==="for"?"#4ade80":"#f87171"}10 0%, transparent 70%)` }} />
+              <div style={{ position:"absolute",top:-60,right:-40,width:220,height:220,borderRadius:"50%",background:`radial-gradient(circle, ${v==="for"?"#4ade80":"#f87171"}${side===v?"38":"14"} 0%, transparent 68%)`,transition:"all .3s",animation:side===v?"floaty 7s ease-in-out infinite":"none" }} />
+              <div style={{ position:"absolute",bottom:-70,left:-30,width:180,height:180,borderRadius:"50%",background:`radial-gradient(circle, ${v==="for"?"#4ade80":"#f87171"}${side===v?"22":"0a"} 0%, transparent 70%)`,transition:"all .3s" }} />
               <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:`linear-gradient(90deg,transparent,${side===v?"#6058c8":"#2a2a3e"},transparent)` }} />
               <span style={{ fontSize:40,position:"relative",zIndex:1 }}>{ic}</span>
               <div style={{ position:"relative",zIndex:1 }}>
@@ -648,7 +698,8 @@ export default function App() {
             <button key={k} className="hov" onClick={() => setIntensity(k)}
               style={{ flex:1,background:intensity===k?"linear-gradient(135deg,#1a1208,#221808)":"rgba(255,255,255,.025)",border:intensity===k?`1px solid ${G}88`:BDR,borderRadius:12,padding:"18px 22px",cursor:"pointer",textAlign:"left",display:"flex",flexDirection:"column",justifyContent:"center",gap:5,position:"relative",overflow:"hidden",boxShadow:intensity===k?`0 0 20px ${G}18`:"none" }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:intensity===k?`linear-gradient(180deg,${G},transparent)`:"transparent",transition:"all .2s" }} />
-              <div style={{ position:"absolute",top:-40,right:-40,width:140,height:140,borderRadius:"50%",background:`radial-gradient(circle, ${k==="civil"?"#4ade80":k==="sharp"?G:"#f87171"}10 0%, transparent 70%)` }} />
+              <div style={{ position:"absolute",top:-60,right:-40,width:200,height:200,borderRadius:"50%",background:`radial-gradient(circle, ${k==="civil"?"#4ade80":k==="sharp"?G:"#f87171"}${intensity===k?"38":"12"} 0%, transparent 68%)`,transition:"all .3s",animation:intensity===k?"floaty 8s ease-in-out infinite":"none" }} />
+              <div style={{ position:"absolute",bottom:-60,left:-30,width:160,height:160,borderRadius:"50%",background:`radial-gradient(circle, ${k==="civil"?"#4ade80":k==="sharp"?G:"#f87171"}${intensity===k?"20":"08"} 0%, transparent 70%)`,transition:"all .3s" }} />
               <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:`linear-gradient(90deg,transparent,${intensity===k?G:"#2a2a3e"},transparent)` }} />
               <div style={{ fontSize:18,fontWeight:700,color:intensity===k?G:"#a0a098",fontFamily:"'Playfair Display',serif",position:"relative",zIndex:1 }}>{label}</div>
               <div style={{ fontSize:14,color:intensity===k?G+"88":"#5a5868",position:"relative",zIndex:1 }}>{desc}</div>
@@ -720,12 +771,13 @@ export default function App() {
 
       {/* TOP BAR */}
       <div style={{ height:"60px",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 28px",borderBottom:BDR,flexShrink:0,background:"rgba(10,10,16,0.95)",backdropFilter:"blur(20px)",zIndex:10,position:"relative" }}>
-        <div style={{ display:"flex",gap:8,alignItems:"center" }}>
-          <button onClick={goHome} className="hov" style={{ fontSize:13,color:G,background:"rgba(201,168,76,.06)",border:`1px solid ${G}33`,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontWeight:600,marginRight:6 }}>← Home</button>
-          <span style={{ fontSize:13,fontWeight:600,padding:"4px 14px",borderRadius:20,background:"#0d1f17",color:"#4ade80",border:"1px solid #1a3d2b" }}>YOU: {side === "for" ? "FOR" : "AGAINST"}</span>
-          <span style={{ fontSize:13,fontWeight:600,padding:"4px 14px",borderRadius:20,background:"#1e1c2e",color:"#a89eed",border:"1px solid #3d3680" }}>CLAUDE: {side === "for" ? "AGAINST" : "FOR"}</span>
-          {bonusNext && <span style={{ fontSize:12,fontWeight:700,padding:"3px 12px",borderRadius:20,background:"#0d1f17",color:"#4ade80",border:"1px solid #1a3d2b" }}>✨ 2x POINTS</span>}
-          {traits.map(id => <span key={id} style={{ fontSize:12,padding:"3px 10px",borderRadius:20,background:"#1a1208",color:G,border:"1px solid #3d2e10" }}>{TRAITS.find(t => t.id === id)?.label}</span>)}
+        <div style={{ display:"flex",gap:14,alignItems:"center",minWidth:0,flex:1 }}>
+          <button onClick={goHome} className="hov" style={{ fontSize:13,color:G,background:"rgba(201,168,76,.06)",border:`1px solid ${G}33`,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontWeight:600,flexShrink:0 }}>← Home</button>
+          <div style={{ minWidth:0,overflow:"hidden",display:"flex",alignItems:"baseline",gap:10 }}>
+            <span style={{ fontSize:14,fontStyle:"italic",color:"#9a9690",fontFamily:"'Playfair Display',serif",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>"{quote.t}"</span>
+            <span style={{ fontSize:12,color:G,fontWeight:600,whiteSpace:"nowrap",flexShrink:0 }}>— {quote.a}</span>
+          </div>
+          {bonusNext && <span style={{ fontSize:12,fontWeight:700,padding:"3px 12px",borderRadius:20,background:"#0d1f17",color:"#4ade80",border:"1px solid #1a3d2b",flexShrink:0 }}>✨ 2x</span>}
         </div>
         <div style={{ display:"flex",alignItems:"center",gap:16 }}>
           <div style={{ textAlign:"center" }}>
@@ -751,11 +803,6 @@ export default function App() {
         {/* CHAT */}
         <div style={{ flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative",background:"linear-gradient(160deg,#0c0c18,#0e0e1c 40%,#0c0e16)" }}>
           {bgArt}
-          {/* Faint arena emblem */}
-          <div style={{ position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",pointerEvents:"none",zIndex:0,textAlign:"center",userSelect:"none" }}>
-            <div style={{ fontSize:200,fontWeight:900,fontFamily:"'Playfair Display',serif",color:"#ffffff",opacity:0.018,lineHeight:1,fontStyle:"italic" }}>VS</div>
-            <div style={{ width:280,height:1,background:"linear-gradient(90deg,transparent,#c9a84c18,transparent)",margin:"8px auto 0" }} />
-          </div>
           <div ref={chatRef} style={{ flex:1,overflowY:"auto",padding:"28px 36px",display:"flex",flexDirection:"column",gap:20,position:"relative",zIndex:1 }}>
             {!debateStarted && !loading && (
               <div style={{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,minHeight:300 }}>
@@ -810,10 +857,22 @@ export default function App() {
                 <div style={{ padding:"18px 22px",borderRadius:"18px 18px 18px 4px",fontSize:16,lineHeight:1.8,background:"rgba(20,20,32,0.92)",color:"#d4d0c8",border:`1px solid ${autoLost?"#7f1d1d":"#2a2a55"}`,backdropFilter:"blur(12px)",boxShadow:"0 4px 20px rgba(0,0,0,0.4)" }}>
                   <Typewriter text={summary} onTick={() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }} />
                 </div>
-                <div style={{ display:"flex",alignItems:"center",gap:20,marginTop:14,padding:"12px 18px",background:"rgba(255,255,255,.02)",border:BDR,borderRadius:12 }}>
-                  <span style={{ fontSize:14,color:"#6b6860" }}>Avg: <span style={{ color:sc(avg),fontWeight:700 }}>{avg}/10</span>{delta !== null && <span style={{ marginLeft:8,color:delta>=0?"#4ade80":"#f87171",fontWeight:700 }}>{delta>=0?"+":""}{delta} pts</span>}</span>
-                  <button onClick={() => setStage("setup")} className="bhov" style={{ padding:"10px 24px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:9,fontSize:14,fontWeight:700,cursor:"pointer" }}>New Debate →</button>
+                <div style={{ display:"flex",alignItems:"center",gap:14,marginTop:14,padding:"14px 18px",background:"rgba(255,255,255,.02)",border:BDR,borderRadius:12,flexWrap:"wrap" }}>
+                  <span style={{ fontSize:14,color:"#6b6860" }}>Avg score: <span style={{ color:sc(pendingResult?.avg ?? 0),fontWeight:700 }}>{pendingResult?.avg ?? "—"}/10</span></span>
+                  {!pointsRevealed ? (
+                    <button onClick={revealPoints} className="bhov" style={{ padding:"11px 26px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:"pointer",letterSpacing:".03em",animation:"revealGlow 1.6s ease-in-out infinite" }}>
+                      🎲 Reveal Your Points
+                    </button>
+                  ) : (
+                    <>
+                      <span style={{ fontSize:18,fontWeight:800,color:pendingResult.delta>=0?"#4ade80":"#f87171",animation:"msgIn .5s ease" }}>{pendingResult.delta>=0?"+":""}{pendingResult.delta} pts{pendingResult.bonusApplied && <span style={{ fontSize:12,marginLeft:6,color:G }}>(2x bonus!)</span>}</span>
+                      <button onClick={() => setStage("setup")} className="bhov" style={{ padding:"10px 24px",background:"rgba(255,255,255,.04)",color:G,border:`1px solid ${G}44`,borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",marginLeft:"auto" }}>New Debate →</button>
+                    </>
+                  )}
                 </div>
+                {pointsRevealed && pendingResult.bonusEarned && (
+                  <div style={{ marginTop:10,padding:"10px 16px",background:"rgba(74,222,128,.08)",border:"1px solid #1a3d2b",borderRadius:10,fontSize:13,color:"#4ade80",fontWeight:600 }}>✨ You scored 9+! Your next debate earns 2x points.</div>
+                )}
               </div>
             )}
           </div>
@@ -859,7 +918,12 @@ export default function App() {
 
         {/* SIDEBAR — no scroll, all fits */}
         <div style={{ width:"340px",borderLeft:"1px solid #1e1e2e",display:"flex",flexDirection:"column",flexShrink:0,background:"linear-gradient(180deg,#0d0d18,#0b0b14)",overflow:"hidden" }}>
-          <div style={{ padding:"16px 22px",borderBottom:"1px solid #1e1e2e" }}>
+          <div style={{ padding:"14px 22px",borderBottom:"1px solid #1e1e2e" }}>
+            <div style={{ display:"flex",gap:6,flexWrap:"wrap",marginBottom:14 }}>
+              <span style={{ fontSize:12,fontWeight:600,padding:"4px 12px",borderRadius:20,background:"#0d1f17",color:"#4ade80",border:"1px solid #1a3d2b" }}>YOU: {side === "for" ? "FOR" : "AGAINST"}</span>
+              <span style={{ fontSize:12,fontWeight:600,padding:"4px 12px",borderRadius:20,background:"#1e1c2e",color:"#a89eed",border:"1px solid #3d3680" }}>CLAUDE: {side === "for" ? "AGAINST" : "FOR"}</span>
+              {traits.map(id => <span key={id} style={{ fontSize:11,padding:"3px 10px",borderRadius:20,background:"#1a1208",color:G,border:"1px solid #3d2e10" }}>{TRAITS.find(t => t.id === id)?.label}</span>)}
+            </div>
             <div style={{ fontSize:10,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6 }}>Topic</div>
             <div style={{ fontSize:15,color:"#f0ece4",lineHeight:1.4,fontWeight:600,fontFamily:"'Playfair Display',serif" }}>"{act}"</div>
           </div>
