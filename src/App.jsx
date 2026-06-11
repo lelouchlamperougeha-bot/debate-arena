@@ -286,6 +286,37 @@ function Timer({ seconds, onExpire }) {
   return <RingTimer left={left} total={seconds} />;
 }
 
+function Confetti() {
+  const colors = ["#c9a84c", "#4ade80", "#a89eed", "#4fc3f7", "#f0ece4", "#ffb74d"];
+  const pieces = Array.from({ length: 90 }, (_, i) => ({
+    left: Math.random() * 100,
+    delay: Math.random() * 0.5,
+    dur: 1.8 + Math.random() * 1.6,
+    color: colors[i % colors.length],
+    size: 6 + Math.random() * 9,
+    drift: (Math.random() - 0.5) * 200,
+    rot: Math.random() * 720,
+  }));
+  return (
+    <div style={{ position:"fixed",inset:0,pointerEvents:"none",zIndex:400,overflow:"hidden" }}>
+      {pieces.map((p, i) => (
+        <div key={i} style={{
+          position:"absolute", top:"-24px", left:`${p.left}%`,
+          width:p.size, height:p.size*0.55, background:p.color, borderRadius:2,
+          animation:`confettiFall ${p.dur}s cubic-bezier(.25,.6,.5,1) ${p.delay}s forwards`,
+          "--drift":`${p.drift}px`, "--rot":`${p.rot}deg`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function DamageFlash() {
+  return (
+    <div style={{ position:"fixed",inset:0,pointerEvents:"none",zIndex:400,animation:"damageFlash 1s ease-out forwards",background:"radial-gradient(circle at center, transparent 35%, rgba(248,113,113,0.4) 100%)" }} />
+  );
+}
+
 export default function App() {
   const saved = loadSt();
   const [rating, setRating]       = useState(saved?.rating ?? 0);
@@ -325,6 +356,10 @@ export default function App() {
   const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
   const [pendingResult, setPendingResult] = useState(null); // {delta, oldRating, newRating, newLevel, deranked, bonusEarned}
   const [pointsRevealed, setPointsRevealed] = useState(false);
+  const [confirmEarlyEnd, setConfirmEarlyEnd] = useState(false);
+  const [fxConfetti, setFxConfetti] = useState(false);
+  const [fxDamage, setFxDamage] = useState(false);
+  const [shuffleKey, setShuffleKey] = useState(0);
   const chatRef = useRef(null);
 
   const act   = custom.trim() || topic;
@@ -341,7 +376,7 @@ export default function App() {
   useEffect(() => { saveSt({ rating, trophies, bonusNext }); }, [rating, trophies, bonusNext]);
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [msgs, loading, summary]);
 
-  const refresh = () => { setTopics(pickTopics(rating, topics.map(t => t.label))); setTopic(""); setCustom(""); };
+  const refresh = () => { setTopics(pickTopics(rating, topics.map(t => t.label))); setTopic(""); setCustom(""); setShuffleKey(k => k + 1); };
   const toggleStats = () => {
     if (showStats) { setStatsClosing(true); setTimeout(() => { setShowStats(false); setStatsClosing(false); }, 540); }
     else setShowStats(true);
@@ -377,7 +412,7 @@ export default function App() {
     setHintLoading(true);
     try {
       const lastClaude = [...hist].reverse().find(m => m.role === "assistant")?.content || "";
-      const h = await callClaude([{ role: "user", content: `I'm debating "${act}", arguing ${side === "for" ? "in favor" : "against"}. Claude just said: "${lastClaude}". Give me the CORE of one strong argument I could build on — just a seed idea in 1-2 sentences, not a full argument. Be concise.` }], "You are a debate coach giving a quick hint. 1-2 sentences max.");
+      const h = await callClaude([{ role: "user", content: `I'm debating "${act}", arguing ${side === "for" ? "in favor" : "against"}. Claude just said: "${lastClaude}". Give me 2-3 very short bullet points — each a punchy seed of an argument I could build on. Each bullet under 12 words. Output ONLY the bullets, one per line starting with "- ". No intro, no explanation.` }], "You are a debate coach giving quick seed ideas as terse bullet points. Each under 12 words. No preamble.");
       setHint(h); setHintsLeft(n => n - 1);
     } catch (e) { setHint("Couldn't load a hint, try again."); }
     setHintLoading(false);
@@ -453,6 +488,8 @@ export default function App() {
     if (sumLoading || summary) return;
     setTimerActive(false); setSumLoading(true);
     const participated = scores.length > 0;
+    const roundsPlayed = scores.length;
+    const eligibleForGains = roundsPlayed >= 5;
     let a = participated ? scores.reduce((x, y) => x + y, 0) / scores.length : 0;
     if (lost) a = Math.min(a, 2);
 
@@ -462,10 +499,13 @@ export default function App() {
     else if (lost) d = -Math.abs(Math.round((5 - a) * 20)) - 20;
     else d = Math.round((a - 5) * 20);
 
+    // Fewer than 5 rounds: you can still LOSE points, but you cannot GAIN them
+    if (!eligibleForGains && d > 0) d = 0;
+
     // 2x bonus from a previous 9+ debate applies to positive gains only
     const bonusApplied = bonusNext && d > 0;
     if (bonusApplied) d *= 2;
-    const bonusEarned = participated && !lost && a >= 9;
+    const bonusEarned = eligibleForGains && !lost && a >= 9;
 
     const old = rating, nw = Math.max(0, old + d);
     const ol = getLevel(old), nl = getLevel(nw);
@@ -474,7 +514,7 @@ export default function App() {
     setPendingResult({
       delta: d, oldRating: old, newRating: nw, avg: Math.round(a * 10) / 10,
       levelChanged: nl.name !== ol.name, newLevel: nl, deranked: nw < old,
-      bonusApplied, bonusEarned, rounds: round,
+      bonusApplied, bonusEarned, rounds: round, roundsPlayed, eligibleForGains,
     });
     setPointsRevealed(false);
 
@@ -507,6 +547,13 @@ export default function App() {
     setSumLoading(false);
   };
 
+  const attemptEnd = () => {
+    if (sumLoading || summary || !debateStarted) return;
+    // Warn if ending before 5 rounds (no points to gain, only possible loss)
+    if (scores.length < 5) { setConfirmEarlyEnd(true); return; }
+    endDebate();
+  };
+
   const revealPoints = () => {
     if (!pendingResult || pointsRevealed) return;
     const r = pendingResult;
@@ -514,7 +561,9 @@ export default function App() {
     setRating(r.newRating);
     setTrophies(t => [{ topic: act, side, avg: r.avg, delta: r.delta, date: new Date().toLocaleDateString(), rounds: r.rounds }, ...t].slice(0, 20));
     setBonusNext(r.bonusEarned); // clears old bonus, sets new one if earned
-    if (r.levelChanged) setTimeout(() => setLvlModal({ ...r.newLevel, deranked: r.deranked }), 600);
+    if (r.levelChanged) setTimeout(() => setLvlModal({ ...r.newLevel, deranked: r.deranked }), 900);
+    if (r.delta > 0) { setFxConfetti(true); setTimeout(() => setFxConfetti(false), 3500); }
+    else if (r.delta < 0) { setFxDamage(true); setTimeout(() => setFxDamage(false), 1100); }
     setPointsRevealed(true);
   };
 
@@ -534,6 +583,11 @@ export default function App() {
     @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
     @keyframes hintPulse{0%,100%{opacity:.4}50%{opacity:1}}
     @keyframes revealGlow{0%,100%{box-shadow:0 4px 18px #c9a84c44}50%{box-shadow:0 4px 28px #c9a84c88,0 0 12px #c9a84c66}}
+    @keyframes confettiFall{0%{transform:translateY(0) translateX(0) rotate(0);opacity:1}100%{transform:translateY(105vh) translateX(var(--drift)) rotate(var(--rot));opacity:0.9}}
+    @keyframes damageFlash{0%{opacity:0}20%{opacity:1}100%{opacity:0}}
+    @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+    @keyframes shuffleIn{0%{opacity:0;transform:translateX(-24px) scale(.96)}100%{opacity:1;transform:translateX(0) scale(1)}}
+    @keyframes spin360{from{transform:rotate(0)}to{transform:rotate(360deg)}}
     @keyframes sandShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-0.6px)}75%{transform:translateX(0.6px)}}
     @keyframes arenaFlash{0%{opacity:0}12%{opacity:1}70%{opacity:1}100%{opacity:0}}
     @keyframes arenaText{0%{opacity:0;transform:scale(.8) translateY(10px);letter-spacing:.1em}30%{opacity:1;transform:scale(1) translateY(0);letter-spacing:.35em}75%{opacity:1;transform:scale(1) translateY(0);letter-spacing:.35em}100%{opacity:0;transform:scale(1.1);letter-spacing:.6em}}
@@ -605,8 +659,8 @@ export default function App() {
 
       {/* STATS DRAWER */}
       {showStats && (
-        <div style={{ flexShrink:0,overflow:"hidden",position:"relative",zIndex:2 }}>
-        <div className="drawer" style={{ background:"rgba(10,10,18,0.97)",borderBottom:BDR,padding:"20px 44px",display:"flex",gap:48,backdropFilter:"blur(20px)",animation:statsClosing?"drawerUp .55s cubic-bezier(.4,0,.2,1) forwards":"drawerDown .55s cubic-bezier(.16,1,.3,1) forwards" }}>
+        <div style={{ position:"absolute",top:"68px",left:0,right:0,overflow:"hidden",zIndex:20 }}>
+        <div className="drawer" style={{ background:"#0c0c16",borderBottom:BDR,padding:"20px 44px",display:"flex",gap:48,backdropFilter:"blur(20px)",boxShadow:"0 16px 40px rgba(0,0,0,0.6)",animation:statsClosing?"drawerUp .55s cubic-bezier(.4,0,.2,1) forwards":"drawerDown .55s cubic-bezier(.16,1,.3,1) forwards" }}>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,marginBottom:14 }}>Recent Debates</div>
             {trophies.length === 0 && <p style={{ fontSize:13,color:"#5a5868" }}>No debates yet. Enter the arena to begin.</p>}
@@ -643,11 +697,11 @@ export default function App() {
         <div style={{ flex:1,borderRight:BDR,display:"flex",flexDirection:"column",padding:"28px 36px",gap:10 }}>
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}>
             <span style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G }}>Pick Your Battleground</span>
-            <button onClick={refresh} className="hov" style={{ background:"rgba(255,255,255,.04)",border:BDR,borderRadius:7,padding:"5px 14px",fontSize:15,color:"#6b6860",cursor:"pointer" }}>↻</button>
+            <button onClick={refresh} className="hov" style={{ background:"rgba(255,255,255,.04)",border:BDR,borderRadius:7,padding:"5px 14px",fontSize:15,color:"#6b6860",cursor:"pointer" }}><span key={shuffleKey} style={{ display:"inline-block",animation:"spin360 .5s ease" }}>↻</span></button>
           </div>
           {topics.map((t, ti) => (
-            <button key={t.label} className="hov" onClick={() => { setTopic(t.label); setCustom(""); }}
-              style={{ flex:1,background:topic===t.label&&!custom?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:topic===t.label&&!custom?"1px solid #6058c8":BDR,borderRadius:12,padding:"16px 18px",color:topic===t.label&&!custom?"#c0b8f0":"#a0a098",cursor:"pointer",display:"flex",flexDirection:"column",textAlign:"left",position:"relative",overflow:"hidden",boxShadow:topic===t.label&&!custom?"0 0 24px #534AB722":"none" }}>
+            <button key={`${shuffleKey}-${t.label}`} className="hov" onClick={() => { setTopic(t.label); setCustom(""); }}
+              style={{ flex:1,background:topic===t.label&&!custom?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:topic===t.label&&!custom?"1px solid #6058c8":BDR,borderRadius:12,padding:"16px 18px",color:topic===t.label&&!custom?"#c0b8f0":"#a0a098",cursor:"pointer",display:"flex",flexDirection:"column",textAlign:"left",position:"relative",overflow:"hidden",boxShadow:topic===t.label&&!custom?"0 0 24px #534AB722":"none",animation:`shuffleIn .5s cubic-bezier(.2,.8,.2,1) ${ti*0.07}s both` }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:topic===t.label&&!custom?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
               <div style={{ position:"absolute",top:"50%",right:18,transform:"translateY(-50%)",fontSize:88,lineHeight:1,opacity:topic===t.label&&!custom?0.16:0.07,filter:"saturate(1.2)",transition:"opacity .2s",pointerEvents:"none" }}>{t.cat.split(" ")[0]}</div>
               <div style={{ position:"absolute",bottom:0,left:"8%",right:"8%",height:1,background:`linear-gradient(90deg,transparent,${topic===t.label&&!custom?"#6058c8":"#2a2a3e"},transparent)` }} />
@@ -763,17 +817,33 @@ export default function App() {
     <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",overflow:"hidden" }}>
       <style>{CSS}</style>
       {arenaTransition}
+      {fxConfetti && <Confetti />}
+      {fxDamage && <DamageFlash />}
       {lvlModal && <LevelUpModal level={lvlModal} onClose={() => setLvlModal(null)} />}
       {confirmLeave && <ConfirmModal
         onSave={() => { setConfirmLeave(false); endDebate(); }}
         onDiscard={() => { setConfirmLeave(false); setStage("setup"); }}
         onCancel={() => setConfirmLeave(false)} />}
+      {confirmEarlyEnd && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,animation:"fadeIn .25s ease" }} onClick={() => setConfirmEarlyEnd(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"linear-gradient(145deg, #13131f, #1a1a2e)",border:BDR,borderRadius:20,padding:"32px",maxWidth:440,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.6)" }}>
+            <div style={{ fontSize:40,marginBottom:14 }}>⏳</div>
+            <div style={{ fontSize:20,fontWeight:700,color:"#f0ece4",marginBottom:10,fontFamily:"'Playfair Display',serif" }}>End early?</div>
+            <div style={{ fontSize:14,color:"#8a8680",lineHeight:1.6,marginBottom:8 }}>You've only argued <strong style={{ color:G }}>{scores.length} of 5</strong> rounds needed to earn points. Play <strong style={{ color:G }}>{5 - scores.length} more</strong> to become eligible for a reward.</div>
+            <div style={{ fontSize:13,color:"#f87171",lineHeight:1.5,marginBottom:24 }}>If you end now you <strong>cannot gain points</strong> — but you can still <strong>lose</strong> them.</div>
+            <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
+              <button className="bhov" onClick={() => setConfirmEarlyEnd(false)} style={{ padding:"13px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:"pointer" }}>Keep Debating</button>
+              <button className="bhov" onClick={() => { setConfirmEarlyEnd(false); endDebate(); }} style={{ padding:"13px",background:"rgba(248,113,113,.1)",color:"#f87171",border:"1px solid #3a1a1a",borderRadius:10,fontSize:15,fontWeight:600,cursor:"pointer" }}>End Anyway</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TOP BAR */}
       <div style={{ height:"60px",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 28px",borderBottom:BDR,flexShrink:0,background:"rgba(10,10,16,0.95)",backdropFilter:"blur(20px)",zIndex:10,position:"relative" }}>
         <div style={{ display:"flex",gap:14,alignItems:"center",minWidth:0,flex:1 }}>
           <button onClick={goHome} className="hov" style={{ fontSize:13,color:G,background:"rgba(201,168,76,.06)",border:`1px solid ${G}33`,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontWeight:600,flexShrink:0 }}>← Home</button>
-          <div style={{ minWidth:0,overflow:"hidden",display:"flex",alignItems:"baseline",gap:10 }}>
+          <div style={{ minWidth:0,overflow:"hidden",display:"flex",alignItems:"baseline",gap:10,justifyContent:"center",flex:1 }}>
             <span style={{ fontSize:14,fontStyle:"italic",color:"#9a9690",fontFamily:"'Playfair Display',serif",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>"{quote.t}"</span>
             <span style={{ fontSize:12,color:G,fontWeight:600,whiteSpace:"nowrap",flexShrink:0 }}>— {quote.a}</span>
           </div>
@@ -792,7 +862,7 @@ export default function App() {
             <div style={{ fontSize:10,color:"#5a5868",textTransform:"uppercase",letterSpacing:".1em",fontWeight:600 }}>Timeouts</div>
             <div style={{ fontSize:20,fontWeight:700,color:"#f87171",lineHeight:1 }}>{timeouts}<span style={{ fontSize:12,color:"#3a3a4e" }}>/2</span></div>
           </div>}
-          <button onClick={() => endDebate()} disabled={sumLoading || !!summary || !debateStarted}
+          <button onClick={attemptEnd} disabled={sumLoading || !!summary || !debateStarted}
             style={{ fontSize:13,color:sumLoading||summary||!debateStarted?"#3a3a4e":"#f87171",background:"rgba(255,255,255,.03)",border:"1px solid",borderColor:sumLoading||summary||!debateStarted?"#1e1e2e":"#3a1a1a",borderRadius:8,padding:"7px 14px",cursor:sumLoading||summary||!debateStarted?"not-allowed":"pointer",fontWeight:500 }}>
             {sumLoading ? "Generating…" : "⏹ End"}
           </button>
@@ -826,7 +896,7 @@ export default function App() {
                 {m.role === "user" && !m.timedOut && m.score != null && (
                   <div style={{ display:"flex",alignItems:"center",gap:8,marginTop:7 }}>
                     <div style={{ width:`${(m.score/10)*80}px`,height:3,background:sc(m.score),borderRadius:2,transition:"width .6s ease",boxShadow:`0 0 6px ${sc(m.score)}88` }} />
-                    <span style={{ fontSize:13,color:sc(m.score),fontWeight:600 }}>{sl(m.score)} ({m.score}/10)</span>
+                    <span style={{ fontSize:13,color:sc(m.score),fontWeight:700 }}>{m.score}/10</span>
                   </div>
                 )}
                 {m.role === "user" && fallacies[i] && (
@@ -859,20 +929,11 @@ export default function App() {
                 </div>
                 <div style={{ display:"flex",alignItems:"center",gap:14,marginTop:14,padding:"14px 18px",background:"rgba(255,255,255,.02)",border:BDR,borderRadius:12,flexWrap:"wrap" }}>
                   <span style={{ fontSize:14,color:"#6b6860" }}>Avg score: <span style={{ color:sc(pendingResult?.avg ?? 0),fontWeight:700 }}>{pendingResult?.avg ?? "—"}/10</span></span>
-                  {!pointsRevealed ? (
-                    <button onClick={revealPoints} className="bhov" style={{ padding:"11px 26px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:"pointer",letterSpacing:".03em",animation:"revealGlow 1.6s ease-in-out infinite" }}>
-                      🎲 Reveal Your Points
-                    </button>
-                  ) : (
-                    <>
-                      <span style={{ fontSize:18,fontWeight:800,color:pendingResult.delta>=0?"#4ade80":"#f87171",animation:"msgIn .5s ease" }}>{pendingResult.delta>=0?"+":""}{pendingResult.delta} pts{pendingResult.bonusApplied && <span style={{ fontSize:12,marginLeft:6,color:G }}>(2x bonus!)</span>}</span>
-                      <button onClick={() => setStage("setup")} className="bhov" style={{ padding:"10px 24px",background:"rgba(255,255,255,.04)",color:G,border:`1px solid ${G}44`,borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",marginLeft:"auto" }}>New Debate →</button>
-                    </>
-                  )}
+                  {!pendingResult?.eligibleForGains && <span style={{ fontSize:13,color:"#f87171",fontWeight:600 }}>· Under 5 rounds — no points to gain</span>}
+                  {pointsRevealed
+                    ? <button onClick={() => setStage("setup")} className="bhov" style={{ padding:"10px 24px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",marginLeft:"auto" }}>New Debate →</button>
+                    : <span style={{ fontSize:13,color:"#a89eed",marginLeft:"auto",fontWeight:600 }}>→ Reveal your points in the sidebar</span>}
                 </div>
-                {pointsRevealed && pendingResult.bonusEarned && (
-                  <div style={{ marginTop:10,padding:"10px 16px",background:"rgba(74,222,128,.08)",border:"1px solid #1a3d2b",borderRadius:10,fontSize:13,color:"#4ade80",fontWeight:600 }}>✨ You scored 9+! Your next debate earns 2x points.</div>
-                )}
               </div>
             )}
           </div>
@@ -893,8 +954,15 @@ export default function App() {
           {/* Hint banner */}
           {hint && !summary && (
             <div className="mi" style={{ margin:"0 36px 4px",padding:"14px 18px",background:"rgba(83,74,183,0.1)",border:"1px solid #534AB744",borderRadius:12,position:"relative",zIndex:1 }}>
-              <div style={{ fontSize:11,fontWeight:700,color:"#a89eed",textTransform:"uppercase",letterSpacing:".1em",marginBottom:6 }}>💡 Hint</div>
-              <div style={{ fontSize:15,color:"#c8c4b8",lineHeight:1.6 }}><Typewriter text={hint} /></div>
+              <div style={{ fontSize:11,fontWeight:700,color:"#a89eed",textTransform:"uppercase",letterSpacing:".1em",marginBottom:8 }}>💡 Hint</div>
+              <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
+                {hint.split("\n").map(l => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean).map((l, i) => (
+                  <div key={i} style={{ display:"flex",gap:8,alignItems:"flex-start",fontSize:15,color:"#c8c4b8",lineHeight:1.5 }}>
+                    <span style={{ color:"#a89eed",flexShrink:0,fontWeight:700 }}>▸</span>
+                    <span>{l}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -918,8 +986,8 @@ export default function App() {
 
         {/* SIDEBAR — no scroll, all fits */}
         <div style={{ width:"340px",borderLeft:"1px solid #1e1e2e",display:"flex",flexDirection:"column",flexShrink:0,background:"linear-gradient(180deg,#0d0d18,#0b0b14)",overflow:"hidden" }}>
-          <div style={{ padding:"14px 22px",borderBottom:"1px solid #1e1e2e" }}>
-            <div style={{ display:"flex",gap:6,flexWrap:"wrap",marginBottom:14 }}>
+          <div style={{ padding:"14px 22px",borderBottom:"1px solid #1e1e2e",textAlign:"center" }}>
+            <div style={{ display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,justifyContent:"center" }}>
               <span style={{ fontSize:12,fontWeight:600,padding:"4px 12px",borderRadius:20,background:"#0d1f17",color:"#4ade80",border:"1px solid #1a3d2b" }}>YOU: {side === "for" ? "FOR" : "AGAINST"}</span>
               <span style={{ fontSize:12,fontWeight:600,padding:"4px 12px",borderRadius:20,background:"#1e1c2e",color:"#a89eed",border:"1px solid #3d3680" }}>CLAUDE: {side === "for" ? "AGAINST" : "FOR"}</span>
               {traits.map(id => <span key={id} style={{ fontSize:11,padding:"3px 10px",borderRadius:20,background:"#1a1208",color:G,border:"1px solid #3d2e10" }}>{TRAITS.find(t => t.id === id)?.label}</span>)}
@@ -975,6 +1043,27 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {/* Points reveal — only after debate ends */}
+          {summary && pendingResult && (
+            <div style={{ padding:"14px 22px",borderTop:"1px solid #1e1e2e",background:"rgba(201,168,76,.04)" }}>
+              {!pointsRevealed ? (
+                <button onClick={revealPoints} className="bhov" style={{ width:"100%",padding:"14px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:11,fontSize:15,fontWeight:800,cursor:"pointer",letterSpacing:".03em",animation:"revealGlow 1.6s ease-in-out infinite" }}>
+                  🎲 Reveal Your Points
+                </button>
+              ) : (
+                <div style={{ textAlign:"center",animation:"msgIn .5s ease" }}>
+                  <div style={{ fontSize:10,color:"#5a5868",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700,marginBottom:4 }}>Result</div>
+                  <div style={{ fontSize:32,fontWeight:900,color:pendingResult.delta>0?"#4ade80":pendingResult.delta<0?"#f87171":"#9a9690",lineHeight:1.1 }}>
+                    {pendingResult.delta>0?"+":""}{pendingResult.delta} <span style={{ fontSize:16 }}>pts</span>
+                  </div>
+                  {pendingResult.bonusApplied && <div style={{ fontSize:12,color:G,fontWeight:700,marginTop:3 }}>✨ 2x bonus applied!</div>}
+                  {pendingResult.bonusEarned && <div style={{ fontSize:12,color:"#4ade80",fontWeight:600,marginTop:3 }}>9+ avg — next debate is 2x!</div>}
+                  {pendingResult.delta===0 && !pendingResult.eligibleForGains && <div style={{ fontSize:12,color:"#6b6860",marginTop:3 }}>Under 5 rounds — no gain</div>}
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ padding:"14px 22px",borderTop:"1px solid #1e1e2e",background:"rgba(10,10,16,0.5)" }}>
             <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8 }}>
