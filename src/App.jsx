@@ -5,6 +5,7 @@ const BDR = "1px solid #1e1e2e";
 
 const LEVEL_TIME = { "Novice":120,"Debater":100,"Rhetorician":80,"Sophist":60,"Orator":45,"Philosopher King":30 };
 const LEVEL_HINTS = { "Novice":3,"Debater":2,"Rhetorician":1,"Sophist":1,"Orator":0,"Philosopher King":0 };
+const MIN_WORDS = 20;
 
 async function callClaude(messages, system) {
   for (let i = 0; i < 3; i++) {
@@ -127,9 +128,9 @@ const TRAITS = [
   { id:"detailed",label:"Very detailed",desc:"Long, thorough responses" },
 ];
 const INTENSITY = {
-  civil: { label:"🤝 Respectful",desc:"Measured and fair",prompt:"Be respectful and measured. Acknowledge good points while firmly defending your position.",timeout:"The user ran out of time. Respond graciously and respectfully, gently noting they didn't get an argument in, and restate your position politely.",coach:"respectful, encouraging, and constructive" },
-  sharp: { label:"⚡ Sharp",desc:"Confident, no mercy",prompt:"Be confident and incisive. Push back hard on weak arguments. Do not concede easily.",timeout:"The user ran out of time. Note their silence with confident superiority and press your advantage.",coach:"sharp, direct, and pointed but fair" },
-  ruthless: { label:"🔥 Ruthless",desc:"Brutal and relentless",prompt:"Be relentless. Find every flaw. Be blunt and unyielding. Do not soften your rebuttals.",timeout:"The user ran out of time. Mock them mercilessly for failing to respond in time, then drive your point home brutally.",coach:"brutal, cutting, and merciless (but still genuinely useful)" },
+  civil: { label:"😇 Respectful",desc:"Measured and fair",prompt:"Be respectful and measured. Acknowledge good points while firmly defending your position.",timeout:"The user ran out of time. Respond graciously and respectfully, gently noting they didn't get an argument in, and restate your position politely.",coach:"respectful, encouraging, and constructive" },
+  sharp: { label:"⚔️ Sharp",desc:"Confident, no mercy",prompt:"Be confident and incisive. Push back hard on weak arguments. Do not concede easily.",timeout:"The user ran out of time. Note their silence with confident superiority and press your advantage.",coach:"sharp, direct, and pointed but fair" },
+  ruthless: { label:"😈 Ruthless",desc:"Brutal and relentless",prompt:"Be relentless. Find every flaw. Be blunt and unyielding. Do not soften your rebuttals.",timeout:"The user ran out of time. Mock them mercilessly for failing to respond in time, then drive your point home brutally.",coach:"brutal, cutting, and merciless (but still genuinely useful)" },
 };
 
 const QUOTES = [
@@ -340,6 +341,8 @@ export default function App() {
   const [loading, setLoading]     = useState(false);
   const [round, setRound]         = useState(1);
   const [scores, setScores]       = useState([]);
+  const [offTopicCount, setOffTopicCount] = useState(0);
+  const [inputError, setInputError] = useState("");
   const [fallacies, setFallacies] = useState({});
   const [summary, setSummary]     = useState("");
   const [sumLoading, setSumLoading] = useState(false);
@@ -401,10 +404,19 @@ export default function App() {
   };
 
   const grade = async text => {
+    const words = text.trim().split(/\s+/).filter(Boolean).length;
     try {
-      const r = await callClaude([{ role: "user", content: `Grade this debate argument 1-10. ONE number only.\n"${text}"\nTopic:"${act}"` }], "Impartial debate judge. Reply with a single integer 1-10 only. Rubric: 1-3 off-topic or no real argument; 4-5 weak or generic; 6-7 solid with reasoning; 8 strong with evidence or examples; 9 excellent — clear logic plus concrete evidence; 10 exceptional. Genuinely strong arguments deserve 9s — don't hoard high scores.");
-      const n = parseInt(r.trim()); return isNaN(n) ? 5 : Math.min(10, Math.max(1, n));
-    } catch { return 5; }
+      const r = await callClaude([{ role: "user", content: `Topic being debated: "${act}".\nThe user argues ${side === "for" ? "in favor of" : "against"} it.\n\nTheir argument:\n"${text}"\n\nReturn ONLY a JSON object, nothing else: {"score": <integer 1-10>, "onTopic": <true|false>}. onTopic is false if the argument ignores the topic, changes the subject, or doesn't actually engage the debate.` }], `Impartial debate judge. Reply with ONLY raw JSON, no markdown. Rubric for score: 1-3 off-topic or no real argument; 4-5 weak or generic; 6-7 solid with reasoning; 8 strong with evidence or examples; 9 excellent — clear logic plus concrete evidence; 10 exceptional. Genuinely strong arguments deserve 9s.`);
+      let parsed; try { parsed = JSON.parse(r.replace(/```json|```/g, "").trim()); } catch { parsed = {}; }
+      let n = parseInt(parsed.score); if (isNaN(n)) n = 5;
+      const onTopic = parsed.onTopic !== false;
+      // Slight length reward: long, developed arguments edge up by up to +1
+      if (words >= 60) n += 1; else if (words >= 35) n += 0.5;
+      // Off-topic penalty
+      if (!onTopic) n = Math.min(n, 3) - 1;
+      n = Math.min(10, Math.max(1, Math.round(n)));
+      return { score: n, onTopic };
+    } catch { return { score: 5, onTopic: true }; }
   };
 
   const getHint = async () => {
@@ -437,9 +449,13 @@ export default function App() {
       setFallacies({}); setSummary(""); setPrev(null); setDebateStarted(false);
       setTimerActive(false); setTimeouts(0); setHint(""); setAutoLost(false);
       setPendingResult(null); setPointsRevealed(false);
+      setOffTopicCount(0); setInputError("");
     }, 950);
     setTimeout(() => setTransitioning(false), 2000);
   };
+
+  // Return to a finished debate to review feedback, without wiping it
+  const reviewLast = () => { setStage("debate"); };
 
   const goHome = () => {
     if (debateStarted && !summary) setConfirmLeave(true);
@@ -449,6 +465,15 @@ export default function App() {
   const send = async (autoSubmit = false) => {
     if (loading) return;
     const timedOut = autoSubmit && !input.trim();
+    // Enforce minimum word count on real submissions
+    if (!timedOut) {
+      const words = input.trim().split(/\s+/).filter(Boolean).length;
+      if (words < MIN_WORDS) {
+        setInputError(`Develop your argument — at least ${MIN_WORDS} words (you have ${words}).`);
+        return;
+      }
+    }
+    setInputError("");
     const txt = timedOut ? "[Time ran out]" : input.trim();
     if (!txt && !autoSubmit) return;
     setTimerActive(false); setInput(""); setHint("");
@@ -462,16 +487,17 @@ export default function App() {
     const newH = [...hist, { role: "user", content: timedOut ? "[I ran out of time and didn't respond]" : txt }];
     setHist(newH); setRound(r => r + 1); setLoading(true);
 
-    // timeout = automatic low score
-    const scorePromise = timedOut ? Promise.resolve(2) : grade(txt);
-    const [s, reply] = await Promise.all([scorePromise, callClaude(newH, buildSys(timedOut)).catch(e => "Error: " + e.message)]);
+    // timeout = automatic low score; otherwise grade returns {score, onTopic}
+    const gradePromise = timedOut ? Promise.resolve({ score: 2, onTopic: true }) : grade(txt);
+    const [g, reply] = await Promise.all([gradePromise, callClaude(newH, buildSys(timedOut)).catch(e => "Error: " + e.message)]);
+    const s = g.score;
+    if (!timedOut && !g.onTopic) setOffTopicCount(c => c + 1);
     setScores(x => [...x, s]);
     setHist([...newH, { role: "assistant", content: reply }]);
     setMsgs(m => {
-      // attach the score to the user message we just added, mark claude reply fresh
       const copy = m.map(x => ({ ...x, fresh: false }));
       for (let j = copy.length - 1; j >= 0; j--) {
-        if (copy[j].role === "user" && copy[j].score == null) { copy[j] = { ...copy[j], score: s }; break; }
+        if (copy[j].role === "user" && copy[j].score == null) { copy[j] = { ...copy[j], score: s, offTopic: !timedOut && !g.onTopic }; break; }
       }
       return [...copy, { role: "claude", text: reply, fresh: true }];
     });
@@ -498,6 +524,10 @@ export default function App() {
     if (!participated) d = -40;
     else if (lost) d = -Math.abs(Math.round((5 - a) * 20)) - 20;
     else d = Math.round((a - 5) * 20);
+
+    // Off-topic penalty: lose 8 points for each argument that strayed from the topic
+    const offTopicPenalty = offTopicCount * 8;
+    d -= offTopicPenalty;
 
     // Fewer than 5 rounds: you can still LOSE points, but you cannot GAIN them
     if (!eligibleForGains && d > 0) d = 0;
@@ -539,7 +569,7 @@ export default function App() {
       ).join("\n\n");
       const task = lost
         ? `The student lost by running out of time twice. In under 90 words, coach THE STUDENT — tell them they need to respond faster and engage. Speak to the student as "you".`
-        : `In under 110 words, coach THE STUDENT on THEIR OWN arguments only (the lines marked "THE STUDENT"). Cover: their strongest moment, their weakest point, any logical mistakes THEY made, and one concrete tip. Speak to the student as "you". Do NOT praise or critique the opponent — only the student.`;
+        : `In under 110 words, coach THE STUDENT on THEIR OWN arguments only (the lines marked "THE STUDENT"). Cover: their strongest moment, their weakest point, any logical mistakes THEY made, and one concrete tip. Speak to the student as "you". Do NOT praise or critique the opponent — only the student.${offTopicCount > 0 ? ` IMPORTANT: ${offTopicCount} of their argument(s) drifted off-topic or didn't engage the actual debate — call this out directly and tell them it cost them points.` : ""}`;
       const prompt = `Topic: "${act}". Here is the debate transcript:\n\n${transcript}\n\n${task}`;
       const s = await callClaude([{ role: "user", content: prompt }], `You are a debate coach reviewing a student's performance. Your feedback style is ${INTENSITY[intensity].coach}. You are evaluating ONLY "THE STUDENT" — never the opponent. Write flowing natural prose — NO markdown, NO asterisks, NO bullet points, NO numbered lists, NO headers. Address the student as "you".`);
       setSummary(stripMd(s));
@@ -588,6 +618,10 @@ export default function App() {
     @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
     @keyframes shuffleIn{0%{opacity:0;transform:translateX(-24px) scale(.96)}100%{opacity:1;transform:translateX(0) scale(1)}}
     @keyframes spin360{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+    @keyframes resultPop{0%{transform:scale(0) rotate(-12deg);opacity:0}50%{transform:scale(1.35) rotate(4deg)}70%{transform:scale(.92)}100%{transform:scale(1) rotate(0);opacity:1}}
+    @keyframes resultGlow{0%{text-shadow:0 0 0 transparent}40%{text-shadow:0 0 30px currentColor}100%{text-shadow:0 0 12px currentColor}}
+    @keyframes flashRing{0%{transform:scale(.3);opacity:.9}100%{transform:scale(2.4);opacity:0}}
+    @keyframes screenPulse{0%{opacity:0}30%{opacity:1}100%{opacity:0}}
     @keyframes sandShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-0.6px)}75%{transform:translateX(0.6px)}}
     @keyframes arenaFlash{0%{opacity:0}12%{opacity:1}70%{opacity:1}100%{opacity:0}}
     @keyframes arenaText{0%{opacity:0;transform:scale(.8) translateY(10px);letter-spacing:.1em}30%{opacity:1;transform:scale(1) translateY(0);letter-spacing:.35em}75%{opacity:1;transform:scale(1) translateY(0);letter-spacing:.35em}100%{opacity:0;transform:scale(1.1);letter-spacing:.6em}}
@@ -703,14 +737,13 @@ export default function App() {
             <button key={`${shuffleKey}-${t.label}`} className="hov" onClick={() => { setTopic(t.label); setCustom(""); }}
               style={{ flex:1,background:topic===t.label&&!custom?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:topic===t.label&&!custom?"1px solid #6058c8":BDR,borderRadius:12,padding:"16px 18px",color:topic===t.label&&!custom?"#c0b8f0":"#a0a098",cursor:"pointer",display:"flex",flexDirection:"column",textAlign:"left",position:"relative",overflow:"hidden",boxShadow:topic===t.label&&!custom?"0 0 24px #534AB722":"none",animation:`shuffleIn .5s cubic-bezier(.2,.8,.2,1) ${ti*0.07}s both` }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:topic===t.label&&!custom?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
-              <div style={{ position:"absolute",top:"50%",right:18,transform:"translateY(-50%)",fontSize:88,lineHeight:1,opacity:topic===t.label&&!custom?0.16:0.07,filter:"saturate(1.2)",transition:"opacity .2s",pointerEvents:"none" }}>{t.cat.split(" ")[0]}</div>
               <div style={{ position:"absolute",bottom:0,left:"8%",right:"8%",height:1,background:`linear-gradient(90deg,transparent,${topic===t.label&&!custom?"#6058c8":"#2a2a3e"},transparent)` }} />
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,position:"relative",zIndex:1 }}>
                 <span style={{ fontSize:12,color:"#9a9690",fontWeight:700,letterSpacing:".06em",textTransform:"uppercase" }}>{t.cat.split(" ").slice(1).join(" ")}</span>
                 <span style={{ fontSize:11,color:DC[t.d],fontWeight:700,background:DC[t.d]+"18",padding:"2px 10px",borderRadius:20,border:`1px solid ${DC[t.d]}33` }}>{DL[t.d]}</span>
               </div>
-              <div style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"flex-start",textAlign:"left",padding:"4px 0 0",position:"relative",zIndex:1 }}>
-                <span style={{ fontSize:19,lineHeight:1.4,fontFamily:"'Playfair Display',serif",fontWeight:700,color:topic===t.label&&!custom?"#f0ece4":"#d4d0c8" }}>{t.label}</span>
+              <div style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"4px 0 0",position:"relative",zIndex:1 }}>
+                <span style={{ fontSize:19,lineHeight:1.4,fontFamily:"'Playfair Display',serif",fontWeight:700,color:topic===t.label&&!custom?"#f0ece4":"#d4d0c8" }}>{t.label} {t.cat.split(" ")[0]}</span>
               </div>
             </button>
           ))}
@@ -752,8 +785,6 @@ export default function App() {
             <button key={k} className="hov" onClick={() => setIntensity(k)}
               style={{ flex:1,background:intensity===k?"linear-gradient(135deg,#1a1208,#221808)":"rgba(255,255,255,.025)",border:intensity===k?`1px solid ${G}88`:BDR,borderRadius:12,padding:"18px 22px",cursor:"pointer",textAlign:"left",display:"flex",flexDirection:"column",justifyContent:"center",gap:5,position:"relative",overflow:"hidden",boxShadow:intensity===k?`0 0 20px ${G}18`:"none" }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:intensity===k?`linear-gradient(180deg,${G},transparent)`:"transparent",transition:"all .2s" }} />
-              <div style={{ position:"absolute",top:-60,right:-40,width:200,height:200,borderRadius:"50%",background:`radial-gradient(circle, ${k==="civil"?"#4ade80":k==="sharp"?G:"#f87171"}${intensity===k?"38":"12"} 0%, transparent 68%)`,transition:"all .3s",animation:intensity===k?"floaty 8s ease-in-out infinite":"none" }} />
-              <div style={{ position:"absolute",bottom:-60,left:-30,width:160,height:160,borderRadius:"50%",background:`radial-gradient(circle, ${k==="civil"?"#4ade80":k==="sharp"?G:"#f87171"}${intensity===k?"20":"08"} 0%, transparent 70%)`,transition:"all .3s" }} />
               <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:`linear-gradient(90deg,transparent,${intensity===k?G:"#2a2a3e"},transparent)` }} />
               <div style={{ fontSize:18,fontWeight:700,color:intensity===k?G:"#a0a098",fontFamily:"'Playfair Display',serif",position:"relative",zIndex:1 }}>{label}</div>
               <div style={{ fontSize:14,color:intensity===k?G+"88":"#5a5868",position:"relative",zIndex:1 }}>{desc}</div>
@@ -803,6 +834,11 @@ export default function App() {
               <span style={{ fontSize:17,fontWeight:700,color:"#a89eed" }}>{maxHints}</span>
             </div>
           </div>
+          {summary && (
+            <button onClick={reviewLast} className="bhov" style={{ width:"100%",padding:"12px",background:"rgba(168,158,237,0.1)",color:"#a89eed",border:"1px solid #534AB755",borderRadius:11,fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:-2 }}>
+              ↩ Review your last debate{pendingResult && !pointsRevealed ? " — points not yet revealed!" : ""}
+            </button>
+          )}
           <button disabled={!act || !side} className={act && side ? "bhov" : ""} onClick={enterArena}
             style={{ width:"100%",padding:"20px",background:act&&side?`linear-gradient(135deg,${G},#b8962e)`:"rgba(255,255,255,.04)",color:act&&side?"#0a0a0f":"#3a3a4e",border:act&&side?"none":BDR,borderRadius:12,fontSize:17,fontWeight:700,letterSpacing:".06em",cursor:act&&side?"pointer":"not-allowed",transition:"all .2s",boxShadow:act&&side?`0 4px 24px ${G}44`:"none" }}>
             {act && side ? "⚔️  ENTER THE ARENA" : "Select a topic & side first"}
@@ -894,9 +930,10 @@ export default function App() {
                       : m.text}
                 </div>
                 {m.role === "user" && !m.timedOut && m.score != null && (
-                  <div style={{ display:"flex",alignItems:"center",gap:8,marginTop:7 }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:8,marginTop:7,flexWrap:"wrap" }}>
                     <div style={{ width:`${(m.score/10)*80}px`,height:3,background:sc(m.score),borderRadius:2,transition:"width .6s ease",boxShadow:`0 0 6px ${sc(m.score)}88` }} />
                     <span style={{ fontSize:13,color:sc(m.score),fontWeight:700 }}>{m.score}/10</span>
+                    {m.offTopic && <span style={{ fontSize:12,padding:"2px 9px",background:"#2d1515",border:"1px solid #7f1d1d",borderRadius:20,color:"#f87171",fontWeight:600 }}>⤳ off-topic</span>}
                   </div>
                 )}
                 {m.role === "user" && fallacies[i] && (
@@ -929,7 +966,6 @@ export default function App() {
                 </div>
                 <div style={{ display:"flex",alignItems:"center",gap:14,marginTop:14,padding:"14px 18px",background:"rgba(255,255,255,.02)",border:BDR,borderRadius:12,flexWrap:"wrap" }}>
                   <span style={{ fontSize:14,color:"#6b6860" }}>Avg score: <span style={{ color:sc(pendingResult?.avg ?? 0),fontWeight:700 }}>{pendingResult?.avg ?? "—"}/10</span></span>
-                  {!pendingResult?.eligibleForGains && <span style={{ fontSize:13,color:"#f87171",fontWeight:600 }}>· Under 5 rounds — no points to gain</span>}
                   {pointsRevealed
                     ? <button onClick={() => setStage("setup")} className="bhov" style={{ padding:"10px 24px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",marginLeft:"auto" }}>New Debate →</button>
                     : <span style={{ fontSize:13,color:"#a89eed",marginLeft:"auto",fontWeight:600 }}>→ Reveal your points in the sidebar</span>}
@@ -969,15 +1005,29 @@ export default function App() {
           {/* INPUT */}
           {!summary && debateStarted && (
             <div style={{ padding:"14px 36px",borderTop:"1px solid #1e1e2e",display:"flex",gap:12,alignItems:"center",flexShrink:0,background:"rgba(10,10,16,0.95)",backdropFilter:"blur(20px)",position:"relative",zIndex:1 }}>
-              {maxHints > 0 && (
-                <button onClick={getHint} disabled={hintsLeft<=0||hintLoading||loading} className={hintsLeft>0?"bhov":""}
-                  style={{ height:"52px",padding:"0 18px",background:hintsLeft>0?"rgba(83,74,183,0.12)":"rgba(255,255,255,.03)",color:hintsLeft>0?"#a89eed":"#3a3a4e",border:`1px solid ${hintsLeft>0?"#534AB755":"#1e1e2e"}`,borderRadius:12,fontSize:14,fontWeight:600,cursor:hintsLeft>0&&!hintLoading?"pointer":"not-allowed",flexShrink:0,whiteSpace:"nowrap" }}>
-                  💡 {`Hint (${hintsLeft})`}
-                </button>
-              )}
-              <textarea value={input} onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(false); } }}
-                style={{ flex:1,resize:"none",height:"52px",padding:"14px 18px",fontSize:15,fontFamily:"'Inter',sans-serif",background:"rgba(255,255,255,.04)",border:"1px solid #1e1e2e",borderRadius:12,color:"#e8e4dc",lineHeight:1.4 }} />
+              {maxHints > 0 && (() => {
+                const hintReady = hintsLeft > 0 && !hintLoading && !loading && scores.length >= 1;
+                const reason = scores.length < 1 ? "Make your first argument to unlock hints"
+                  : loading ? "Wait for Claude to finish"
+                  : hintsLeft <= 0 ? "No hints left" : "";
+                return (
+                  <button onClick={getHint} disabled={!hintReady} title={reason} className={hintReady?"bhov":""}
+                    style={{ height:"52px",padding:"0 18px",background:hintReady?"rgba(83,74,183,0.12)":"rgba(255,255,255,.03)",color:hintReady?"#a89eed":"#3a3a4e",border:`1px solid ${hintReady?"#534AB755":"#1e1e2e"}`,borderRadius:12,fontSize:14,fontWeight:600,cursor:hintReady?"pointer":"not-allowed",flexShrink:0,whiteSpace:"nowrap",transition:"all .2s" }}>
+                    💡 {hintLoading ? "…" : `Hint (${hintsLeft})`}
+                  </button>
+                );
+              })()}
+              <div style={{ flex:1,position:"relative" }}>
+                <textarea value={input} onChange={e => { setInput(e.target.value); if (inputError) setInputError(""); }}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(false); } }}
+                  placeholder={`Make your argument — at least ${MIN_WORDS} words…`}
+                  style={{ width:"100%",resize:"none",height:"52px",padding:"14px 18px",fontSize:15,fontFamily:"'Inter',sans-serif",background:"rgba(255,255,255,.04)",border:`1px solid ${inputError?"#7f1d1d":"#1e1e2e"}`,borderRadius:12,color:"#e8e4dc",lineHeight:1.4 }} />
+                {input.trim() && (() => {
+                  const w = input.trim().split(/\s+/).filter(Boolean).length;
+                  return <span style={{ position:"absolute",right:12,bottom:6,fontSize:11,color:w>=MIN_WORDS?"#4ade80":"#6b6860",fontWeight:600 }}>{w}/{MIN_WORDS}</span>;
+                })()}
+                {inputError && <div style={{ position:"absolute",left:2,top:-22,fontSize:12,color:"#f87171",fontWeight:500 }}>{inputError}</div>}
+              </div>
               <button disabled={loading || !input.trim()} onClick={() => send(false)}
                 style={{ height:"52px",padding:"0 28px",background:loading||!input.trim()?"rgba(255,255,255,.04)":`linear-gradient(135deg,${G},#b8962e)`,color:loading||!input.trim()?"#3a3a4e":"#0a0a0f",border:loading||!input.trim()?BDR:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:loading||!input.trim()?"not-allowed":"pointer",flexShrink:0,boxShadow:loading||!input.trim()?"none":`0 4px 16px ${G}44` }}>Send</button>
             </div>
@@ -1019,14 +1069,8 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <div>
-              <div style={{ fontSize:10,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".12em",marginBottom:8 }}>Tips</div>
-              {["Use real-world examples","Address Claude's specific point","Ask 'why?' to expose weak logic"].map(tip => (
-                <div key={tip} style={{ fontSize:13,color:"#8a8680",marginBottom:6,padding:"7px 12px",paddingLeft:12,borderLeft:"2px solid #534AB7",background:"rgba(83,74,183,.06)",borderRadius:"0 8px 8px 0",lineHeight:1.4 }}>{tip}</div>
-              ))}
-            </div>
             {/* Live match stats */}
-            <div style={{ flex:1,display:"flex",flexDirection:"column",minHeight:0 }}>
+            <div>
               <div style={{ fontSize:10,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".12em",marginBottom:8 }}>This Match</div>
               <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 }}>
                 {[
@@ -1042,6 +1086,12 @@ export default function App() {
                 ))}
               </div>
             </div>
+            <div style={{ flex:1,minHeight:0 }}>
+              <div style={{ fontSize:10,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".12em",marginBottom:8 }}>Tips</div>
+              {["Use real-world examples","Address Claude's specific point","Ask 'why?' to expose weak logic"].map(tip => (
+                <div key={tip} style={{ fontSize:13,color:"#8a8680",marginBottom:6,padding:"7px 12px",paddingLeft:12,borderLeft:"2px solid #534AB7",background:"rgba(83,74,183,.06)",borderRadius:"0 8px 8px 0",lineHeight:1.4 }}>{tip}</div>
+              ))}
+            </div>
           </div>
 
           {/* Points reveal — only after debate ends */}
@@ -1051,17 +1101,21 @@ export default function App() {
                 <button onClick={revealPoints} className="bhov" style={{ width:"100%",padding:"14px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:11,fontSize:15,fontWeight:800,cursor:"pointer",letterSpacing:".03em",animation:"revealGlow 1.6s ease-in-out infinite" }}>
                   🎲 Reveal Your Points
                 </button>
-              ) : (
-                <div style={{ textAlign:"center",animation:"msgIn .5s ease" }}>
+              ) : (() => {
+                const rc = pendingResult.delta>0?"#4ade80":pendingResult.delta<0?"#f87171":"#9a9690";
+                return (
+                <div style={{ textAlign:"center",position:"relative" }}>
+                  <div style={{ position:"absolute",top:"50%",left:"50%",width:120,height:120,marginLeft:-60,marginTop:-60,borderRadius:"50%",border:`3px solid ${rc}`,animation:"flashRing .8s ease-out forwards",pointerEvents:"none" }} />
                   <div style={{ fontSize:10,color:"#5a5868",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700,marginBottom:4 }}>Result</div>
-                  <div style={{ fontSize:32,fontWeight:900,color:pendingResult.delta>0?"#4ade80":pendingResult.delta<0?"#f87171":"#9a9690",lineHeight:1.1 }}>
-                    {pendingResult.delta>0?"+":""}{pendingResult.delta} <span style={{ fontSize:16 }}>pts</span>
+                  <div style={{ fontSize:40,fontWeight:900,color:rc,lineHeight:1.05,animation:"resultPop .7s cubic-bezier(.2,1.4,.4,1) forwards, resultGlow 1s ease-out forwards" }}>
+                    {pendingResult.delta>0?"+":""}{pendingResult.delta} <span style={{ fontSize:18 }}>pts</span>
                   </div>
-                  {pendingResult.bonusApplied && <div style={{ fontSize:12,color:G,fontWeight:700,marginTop:3 }}>✨ 2x bonus applied!</div>}
-                  {pendingResult.bonusEarned && <div style={{ fontSize:12,color:"#4ade80",fontWeight:600,marginTop:3 }}>9+ avg — next debate is 2x!</div>}
-                  {pendingResult.delta===0 && !pendingResult.eligibleForGains && <div style={{ fontSize:12,color:"#6b6860",marginTop:3 }}>Under 5 rounds — no gain</div>}
+                  {pendingResult.bonusApplied && <div style={{ fontSize:12,color:G,fontWeight:700,marginTop:5,animation:"msgIn .5s ease .3s both" }}>✨ 2x bonus applied!</div>}
+                  {pendingResult.bonusEarned && <div style={{ fontSize:12,color:"#4ade80",fontWeight:600,marginTop:5,animation:"msgIn .5s ease .4s both" }}>9+ avg — next debate is 2x!</div>}
+                  {pendingResult.delta===0 && !pendingResult.eligibleForGains && <div style={{ fontSize:12,color:"#6b6860",marginTop:5 }}>Under 5 rounds — no gain</div>}
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
 
