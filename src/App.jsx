@@ -424,7 +424,7 @@ export default function App() {
     if (showStats) { setStatsClosing(true); setTimeout(() => { setShowStats(false); setStatsClosing(false); }, 540); }
     else setShowStats(true);
   };
-  const toggleTrait = id => setTraits(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id]);
+  const toggleTrait = id => setTraits(t => t.includes(id) ? [] : [id]);
 
   const buildSys = (timeoutMode = false) => {
     const cs = side === "for" ? "against" : "for";
@@ -902,9 +902,9 @@ export default function App() {
               <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:12,background:"#0c0c16",border:`1px solid ${G}33`,borderRadius:12,boxShadow:"0 16px 40px rgba(0,0,0,0.6)",animation:traitsClosing?"drawerUp .5s cubic-bezier(.4,0,.2,1) forwards":"drawerDown .5s cubic-bezier(.16,1,.3,1) forwards" }}>
                 {TRAITS.map(t => (
                   <button key={t.id} className="hov" onClick={() => toggleTrait(t.id)}
-                    style={{ background:traits.includes(t.id)?"linear-gradient(135deg,#1a1208,#221808)":"rgba(255,255,255,.025)",border:traits.includes(t.id)?`1px solid ${G}66`:BDR,borderRadius:10,padding:"12px 14px",cursor:"pointer",textAlign:"left" }}>
-                    <div style={{ fontSize:13,fontWeight:600,color:traits.includes(t.id)?G:"#c8c4b8",marginBottom:3 }}>{t.label}</div>
-                    <div style={{ fontSize:12,color:"#5a5868" }}>{t.desc}</div>
+                    style={{ background:traits.includes(t.id)?"linear-gradient(135deg,#1a1208,#221808)":"rgba(255,255,255,.025)",border:traits.includes(t.id)?`1px solid ${G}66`:BDR,borderRadius:10,padding:"14px 16px",cursor:"pointer",textAlign:"left" }}>
+                    <div style={{ fontSize:15,fontWeight:700,color:traits.includes(t.id)?G:"#e8e4dc",marginBottom:4 }}>{t.label}</div>
+                    <div style={{ fontSize:13,color:"#9a9690" }}>{t.desc}</div>
                   </button>
                 ))}
               </div>
