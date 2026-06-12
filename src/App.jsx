@@ -318,12 +318,49 @@ function DamageFlash() {
   );
 }
 
+function PastDebateModal({ debate, onClose }) {
+  if (!debate) return null;
+  const G2 = "#c9a84c";
+  return (
+    <div onClick={onClose} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:350,animation:"fadeIn .25s ease",padding:24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"linear-gradient(160deg,#0e0e1a,#0c0c14)",border:"1px solid #2a2a3e",borderRadius:20,maxWidth:680,width:"100%",maxHeight:"82vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 70px rgba(0,0,0,.7)",overflow:"hidden" }}>
+        <div style={{ padding:"20px 24px",borderBottom:"1px solid #1e1e2e",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16 }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:18,fontWeight:700,color:"#f0ece4",fontFamily:"'Playfair Display',serif",lineHeight:1.3 }}>"{debate.topic}"</div>
+            <div style={{ fontSize:12,color:"#6b6860",marginTop:6 }}>
+              {debate.date} · {debate.rounds} rounds · avg {debate.avg}/10
+              {debate.delta !== 0 && <span style={{ color:debate.delta>0?"#4ade80":"#f87171",fontWeight:700,marginLeft:8 }}>{debate.delta>0?"+":""}{debate.delta} pts</span>}
+              {debate.draw && <span style={{ color:"#4fc3f7",marginLeft:8 }}>🤝 draw</span>}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background:"rgba(255,255,255,.05)",border:"1px solid #2a2a3e",borderRadius:8,color:"#9a9690",fontSize:18,cursor:"pointer",padding:"4px 12px",flexShrink:0 }}>✕</button>
+        </div>
+        <div style={{ flex:1,overflowY:"auto",padding:"20px 24px",display:"flex",flexDirection:"column",gap:14 }}>
+          {(debate.msgs || []).map((m, i) => (
+            <div key={i} style={{ display:"flex",flexDirection:"column",alignItems:m.role==="user"?"flex-end":"flex-start",alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"80%" }}>
+              <div style={{ fontSize:10,color:"#5a5868",marginBottom:5,letterSpacing:".08em",textTransform:"uppercase",fontWeight:600 }}>{m.role==="user"?"You":"Claude"}</div>
+              <div style={{ padding:"13px 16px",borderRadius:m.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",fontSize:15,lineHeight:1.65,background:m.role==="user"?`linear-gradient(135deg,${G2},#b8962e)`:"rgba(20,20,32,0.92)",color:m.role==="user"?"#0a0a0f":"#d4d0c8",border:m.role==="user"?"none":"1px solid #1e1e2e" }}>
+                {m.timedOut ? <span style={{ color:"#7a2020",fontStyle:"italic",fontWeight:600 }}>⏱ Time ran out</span> : m.text}
+              </div>
+              {m.role==="user" && !m.timedOut && m.score != null && (
+                <div style={{ fontSize:12,color:m.score>=8?"#4ade80":m.score>=6?G2:m.score>=4?"#fb923c":"#f87171",fontWeight:700,marginTop:4 }}>{m.score}/10{m.offTopic?" · off-topic":""}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const saved = loadSt();
   const [rating, setRating]       = useState(saved?.rating ?? 0);
   const [bonusNext, setBonusNext] = useState(saved?.bonusNext ?? false);
   const [prevRating, setPrev]     = useState(null);
   const [trophies, setTrophies]   = useState(saved?.trophies ?? []);
+  const [pinned, setPinned]       = useState(saved?.pinned ?? []);
+  const [viewDebate, setViewDebate] = useState(null); // a past debate opened for review
   const [topics, setTopics]       = useState(() => pickTopics(saved?.rating ?? 0));
   const [stage, setStage]         = useState("setup");
   const [debateStarted, setDebateStarted] = useState(false);
@@ -345,6 +382,7 @@ export default function App() {
   const [inputError, setInputError] = useState("");
   const [fallacies, setFallacies] = useState({});
   const [summary, setSummary]     = useState("");
+  const [summaryTip, setSummaryTip] = useState("");
   const [sumLoading, setSumLoading] = useState(false);
   const [lvlModal, setLvlModal]   = useState(null);
   const [timerKey, setTimerKey]   = useState(0);
@@ -355,6 +393,7 @@ export default function App() {
   const [hintLoading, setHintLoading] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [autoLost, setAutoLost]   = useState(false);
+  const [drawResult, setDrawResult] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
   const [pendingResult, setPendingResult] = useState(null); // {delta, oldRating, newRating, newLevel, deranked, bonusEarned}
@@ -376,7 +415,7 @@ export default function App() {
   const timeLimit = LEVEL_TIME[level.name] || 60;
   const maxHints = LEVEL_HINTS[level.name] ?? 0;
 
-  useEffect(() => { saveSt({ rating, trophies, bonusNext }); }, [rating, trophies, bonusNext]);
+  useEffect(() => { saveSt({ rating, trophies, bonusNext, pinned }); }, [rating, trophies, bonusNext, pinned]);
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [msgs, loading, summary]);
 
   const refresh = () => { setTopics(pickTopics(rating, topics.map(t => t.label))); setTopic(""); setCustom(""); setShuffleKey(k => k + 1); };
@@ -394,6 +433,15 @@ export default function App() {
       : level.name === "Debater" ? "Use clear arguments. Occasionally leave a small logical gap."
       : "Argue sharply and rigorously.";
     let base = `You are a debate opponent. Topic: "${act}". You argue ${cs === "for" ? "in favor of" : "against"} this. The user argues ${side === "for" ? "in favor of" : "against"} it.\n${INTENSITY[intensity].prompt}${td ? " Style: " + td + "." : ""}\n${diff}\nRules: Never break character. Never fully concede. 2-4 sentences only. No bullet points.`;
+    // Draw handling — depends on how strong the user's arguments have been
+    const strongRound = scores.filter(s => s >= 7).length;
+    const avgSoFar = scores.length ? scores.reduce((x, y) => x + y, 0) / scores.length : 0;
+    const drawWorthy = scores.length >= 4 && avgSoFar >= 7 && strongRound >= 3;
+    if (drawWorthy) {
+      base += `\nIf the user proposes a draw, a tie, "agree to disagree", or to call it even, you MAY accept — they have argued well and shown the topic has genuine nuance. If you accept, acknowledge their strong case, concede the topic is more balanced than you first claimed, and begin your reply with the exact token [DRAW] on its own line.`;
+    } else {
+      base += `\nIf the user proposes a draw, a tie, "agree to disagree", or tries to call it even, REJECT it. Tell them the debate isn't settled and press them to actually defend their position. Do NOT accept a draw.`;
+    }
     if (timeoutMode) base += `\n${INTENSITY[intensity].timeout}`;
     return base;
   };
@@ -450,12 +498,17 @@ export default function App() {
       setTimerActive(false); setTimeouts(0); setHint(""); setAutoLost(false);
       setPendingResult(null); setPointsRevealed(false);
       setOffTopicCount(0); setInputError("");
+      setDrawResult(false); setSummaryTip("");
     }, 950);
     setTimeout(() => setTransitioning(false), 2000);
   };
 
   // Return to a finished debate to review feedback, without wiping it
-  const reviewLast = () => { setStage("debate"); };
+  const reviewLast = () => {
+    setLoading(false); setSumLoading(false); setTimerActive(false); setHintLoading(false);
+    setMsgs(m => m.map(x => ({ ...x, fresh: false }))); // don't re-type on review
+    setStage("debate");
+  };
 
   const goHome = () => {
     if (debateStarted && !summary) setConfirmLeave(true);
@@ -489,7 +542,9 @@ export default function App() {
 
     // timeout = automatic low score; otherwise grade returns {score, onTopic}
     const gradePromise = timedOut ? Promise.resolve({ score: 2, onTopic: true }) : grade(txt);
-    const [g, reply] = await Promise.all([gradePromise, callClaude(newH, buildSys(timedOut)).catch(e => "Error: " + e.message)]);
+    const [g, replyRaw] = await Promise.all([gradePromise, callClaude(newH, buildSys(timedOut)).catch(e => "Error: " + e.message)]);
+    const isDraw = /\[DRAW\]/i.test(replyRaw);
+    const reply = replyRaw.replace(/\[DRAW\]/ig, "").trim();
     const s = g.score;
     if (!timedOut && !g.onTopic) setOffTopicCount(c => c + 1);
     setScores(x => [...x, s]);
@@ -503,6 +558,9 @@ export default function App() {
     });
     setLoading(false);
 
+    // Claude accepted a draw
+    if (isDraw) { setDrawResult(true); const typeMs = Math.min(reply.length * 8 + 300, 6000); setTimeout(() => endDebate(false, true), typeMs + 400); return; }
+
     // Two timeouts = auto loss
     if (newTimeouts >= 2) { setAutoLost(true); setTimeout(() => endDebate(true), 800); return; }
     const typeMs = Math.min(reply.length * 8 + 300, 6000);
@@ -510,19 +568,20 @@ export default function App() {
     setTimeout(() => setTimerActive(true), typeMs);
   };
 
-  const endDebate = async (lost = false) => {
+  const endDebate = async (lost = false, draw = false) => {
     if (sumLoading || summary) return;
     setTimerActive(false); setSumLoading(true);
     const participated = scores.length > 0;
     const roundsPlayed = scores.length;
-    const eligibleForGains = roundsPlayed >= 5;
+    const eligibleForGains = roundsPlayed >= 5 || draw; // a draw is always honorable
     let a = participated ? scores.reduce((x, y) => x + y, 0) / scores.length : 0;
     if (lost) a = Math.min(a, 2);
 
-    // Point delta: no participation = flat penalty; loss = heavy penalty; else Elo-style
+    // Point delta: no participation = flat penalty; loss = heavy penalty; draw = modest reward; else Elo-style
     let d;
     if (!participated) d = -40;
     else if (lost) d = -Math.abs(Math.round((5 - a) * 20)) - 20;
+    else if (draw) d = Math.max(15, Math.round((a - 5) * 15)); // honorable draw earns solid points
     else d = Math.round((a - 5) * 20);
 
     // Off-topic penalty: lose 8 points for each argument that strayed from the topic
@@ -544,7 +603,7 @@ export default function App() {
     setPendingResult({
       delta: d, oldRating: old, newRating: nw, avg: Math.round(a * 10) / 10,
       levelChanged: nl.name !== ol.name, newLevel: nl, deranked: nw < old,
-      bonusApplied, bonusEarned, rounds: round, roundsPlayed, eligibleForGains,
+      bonusApplied, bonusEarned, rounds: round, roundsPlayed, eligibleForGains, draw,
     });
     setPointsRevealed(false);
 
@@ -569,10 +628,20 @@ export default function App() {
       ).join("\n\n");
       const task = lost
         ? `The student lost by running out of time twice. In under 90 words, coach THE STUDENT — tell them they need to respond faster and engage. Speak to the student as "you".`
-        : `In under 110 words, coach THE STUDENT on THEIR OWN arguments only (the lines marked "THE STUDENT"). Cover: their strongest moment, their weakest point, any logical mistakes THEY made, and one concrete tip. Speak to the student as "you". Do NOT praise or critique the opponent — only the student.${offTopicCount > 0 ? ` IMPORTANT: ${offTopicCount} of their argument(s) drifted off-topic or didn't engage the actual debate — call this out directly and tell them it cost them points.` : ""}`;
+        : draw
+        ? `The debate ended in a DRAW — the student argued well enough that you conceded the topic has real nuance. In under 110 words, coach THE STUDENT: acknowledge the strong case they built, note their best argument, and give one tip to push from a draw to a win next time. Speak to the student as "you". End with a single concrete tip on its own line starting with "TIP: ".`
+        : `In under 110 words, coach THE STUDENT on THEIR OWN arguments only (the lines marked "THE STUDENT"). Cover: their strongest moment, their weakest point, and any logical mistakes THEY made. Speak to the student as "you". Do NOT praise or critique the opponent — only the student.${offTopicCount > 0 ? ` IMPORTANT: ${offTopicCount} of their argument(s) drifted off-topic or didn't engage the actual debate — call this out directly and tell them it cost them points.` : ""} End with a single concrete tip on its own line starting with "TIP: ".`;
       const prompt = `Topic: "${act}". Here is the debate transcript:\n\n${transcript}\n\n${task}`;
       const s = await callClaude([{ role: "user", content: prompt }], `You are a debate coach reviewing a student's performance. Your feedback style is ${INTENSITY[intensity].coach}. You are evaluating ONLY "THE STUDENT" — never the opponent. Write flowing natural prose — NO markdown, NO asterisks, NO bullet points, NO numbered lists, NO headers. Address the student as "you".`);
-      setSummary(stripMd(s));
+      const raw = stripMd(s);
+      const tipMatch = raw.match(/TIP:\s*(.+)$/is);
+      if (tipMatch) {
+        setSummaryTip(tipMatch[1].trim());
+        setSummary(raw.replace(/TIP:\s*.+$/is, "").trim());
+      } else {
+        setSummaryTip("");
+        setSummary(raw);
+      }
     } catch (e) { setSummary("Could not generate summary: " + e.message); }
     setSumLoading(false);
   };
@@ -587,15 +656,25 @@ export default function App() {
   const revealPoints = () => {
     if (!pendingResult || pointsRevealed) return;
     const r = pendingResult;
+    const effDelta = r.newRating - r.oldRating; // clamped at 0 floor
     setPrev(r.oldRating);
     setRating(r.newRating);
-    setTrophies(t => [{ topic: act, side, avg: r.avg, delta: r.delta, date: new Date().toLocaleDateString(), rounds: r.rounds }, ...t].slice(0, 20));
-    setBonusNext(r.bonusEarned); // clears old bonus, sets new one if earned
+    setTrophies(t => [{ id: Date.now() + "-" + Math.random().toString(36).slice(2,7), topic: act, side, avg: r.avg, delta: effDelta, date: new Date().toLocaleDateString(), rounds: r.rounds, draw: r.draw, hist, msgs, intensity, traits }, ...t].slice(0, 20));
+    setBonusNext(r.bonusEarned);
     if (r.levelChanged) setTimeout(() => setLvlModal({ ...r.newLevel, deranked: r.deranked }), 900);
-    if (r.delta > 0) { setFxConfetti(true); setTimeout(() => setFxConfetti(false), 3500); }
-    else if (r.delta < 0) { setFxDamage(true); setTimeout(() => setFxDamage(false), 1100); }
+    if (effDelta > 0) { setFxConfetti(true); setTimeout(() => setFxConfetti(false), 3500); }
+    else if (effDelta < 0) { setFxDamage(true); setTimeout(() => setFxDamage(false), 1100); }
     setPointsRevealed(true);
   };
+
+  const togglePin = (d) => {
+    setPinned(p => {
+      if (p.find(x => x.id === d.id)) return p.filter(x => x.id !== d.id);
+      if (p.length >= 5) return p; // max 5 pins
+      return [d, ...p].slice(0, 5);
+    });
+  };
+  const isPinned = (d) => pinned.some(x => x.id === d.id);
 
   const CSS = `
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Playfair+Display:ital,wght@0,700;0,900;1,700&display=swap');
@@ -665,6 +744,7 @@ export default function App() {
       <style>{CSS}</style>
       {arenaTransition}
       {lvlModal && <LevelUpModal level={lvlModal} onClose={() => setLvlModal(null)} />}
+      {viewDebate && <PastDebateModal debate={viewDebate} onClose={() => setViewDebate(null)} />}
       {bgArt}
 
       {/* TOP BAR */}
@@ -678,7 +758,7 @@ export default function App() {
             <div style={{ width:36,height:36,borderRadius:"50%",background:`${level.color}22`,border:`1px solid ${level.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>{level.icon}</div>
             <div>
               <div style={{ fontSize:14,fontWeight:600,color:level.color }}>{level.name}</div>
-              <div style={{ fontSize:12,color:"#6b6860" }}>{rating} pts{delta !== null && <span style={{ color:delta>=0?"#4ade80":"#f87171",marginLeft:5 }}>{delta>=0?"+":""}{delta}</span>}</div>
+              <div style={{ fontSize:12,color:"#6b6860" }}>{rating} pts{delta != null && delta !== 0 && <span style={{ color:delta>0?"#4ade80":"#f87171",marginLeft:5 }}>{delta>0?"+":""}{delta}</span>}</div>
             </div>
           </div>
           <div style={{ width:120 }}>
@@ -698,13 +778,31 @@ export default function App() {
           <div style={{ flex:1 }}>
             <div style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,marginBottom:14 }}>Recent Debates</div>
             {trophies.length === 0 && <p style={{ fontSize:13,color:"#5a5868" }}>No debates yet. Enter the arena to begin.</p>}
-            {trophies.slice(0, 3).map((t, i) => (
-              <div key={i} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:i<2?"1px solid #1e1e2e":"none" }}>
-                <div><div style={{ fontSize:13,color:"#c8c4b8",fontWeight:500 }}>{t.topic}</div><div style={{ fontSize:11,color:"#5a5868",marginTop:2 }}>{t.date} · {t.rounds} rounds · avg {t.avg}/10</div></div>
-                <span style={{ fontSize:14,fontWeight:700,color:t.delta>=0?"#4ade80":"#f87171" }}>{t.delta>=0?"+":""}{t.delta}</span>
+            {trophies.slice(0, 5).map((t, i) => (
+              <div key={t.id || i} className="hov" onClick={() => t.hist && setViewDebate(t)} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:8,cursor:t.hist?"pointer":"default",background:"transparent",marginBottom:2 }}>
+                <div style={{ minWidth:0,flex:1 }}>
+                  <div style={{ fontSize:13,color:"#c8c4b8",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{t.topic}</div>
+                  <div style={{ fontSize:11,color:"#5a5868",marginTop:2 }}>{t.date} · {t.rounds} rounds · avg {t.avg}/10{t.draw?" · 🤝 draw":""}</div>
+                </div>
+                {t.delta !== 0 && <span style={{ fontSize:14,fontWeight:700,color:t.delta>0?"#4ade80":"#f87171",flexShrink:0 }}>{t.delta>0?"+":""}{t.delta}</span>}
+                <button onClick={e => { e.stopPropagation(); togglePin(t); }} title={isPinned(t)?"Unpin":"Pin this debate"} style={{ background:"none",border:"none",cursor:"pointer",fontSize:15,padding:"2px 4px",opacity:isPinned(t)?1:0.4,flexShrink:0 }}>📌</button>
               </div>
             ))}
           </div>
+          {pinned.length > 0 && (
+            <div style={{ width:230 }}>
+              <div style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,marginBottom:14 }}>📌 Pinned ({pinned.length}/5)</div>
+              {pinned.map((t, i) => (
+                <div key={t.id || i} className="hov" onClick={() => t.hist && setViewDebate(t)} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:8,cursor:"pointer",background:"rgba(201,168,76,.05)",border:"1px solid #c9a84c22",marginBottom:6 }}>
+                  <div style={{ minWidth:0,flex:1 }}>
+                    <div style={{ fontSize:12,color:"#c8c4b8",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{t.topic}</div>
+                    <div style={{ fontSize:10,color:"#5a5868",marginTop:1 }}>avg {t.avg}/10</div>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); togglePin(t); }} title="Unpin" style={{ background:"none",border:"none",cursor:"pointer",fontSize:13,padding:"2px",flexShrink:0 }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{ width:260 }}>
             <div style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G,marginBottom:14 }}>Levels & Requirements</div>
             {LEVELS.map((l, i) => {
@@ -770,8 +868,6 @@ export default function App() {
             <div key={v} className="hov" onClick={() => setSide(v)}
               style={{ flex:1,background:side===v?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:side===v?"1px solid #6058c8":BDR,borderRadius:14,padding:"22px",cursor:"pointer",display:"flex",alignItems:"center",gap:20,position:"relative",overflow:"hidden",boxShadow:side===v?"0 0 24px #534AB722":"none" }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:side===v?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
-              <div style={{ position:"absolute",top:-60,right:-40,width:220,height:220,borderRadius:"50%",background:`radial-gradient(circle, ${v==="for"?"#4ade80":"#f87171"}${side===v?"38":"14"} 0%, transparent 68%)`,transition:"all .3s",animation:side===v?"floaty 7s ease-in-out infinite":"none" }} />
-              <div style={{ position:"absolute",bottom:-70,left:-30,width:180,height:180,borderRadius:"50%",background:`radial-gradient(circle, ${v==="for"?"#4ade80":"#f87171"}${side===v?"22":"0a"} 0%, transparent 70%)`,transition:"all .3s" }} />
               <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:`linear-gradient(90deg,transparent,${side===v?"#6058c8":"#2a2a3e"},transparent)` }} />
               <span style={{ fontSize:40,position:"relative",zIndex:1 }}>{ic}</span>
               <div style={{ position:"relative",zIndex:1 }}>
@@ -960,10 +1056,19 @@ export default function App() {
             )}
             {summary && (
               <div className="mi" style={{ display:"flex",flexDirection:"column",alignItems:"flex-start",alignSelf:"flex-start",maxWidth:"72%" }}>
-                <div style={{ fontSize:11,color:autoLost?"#f87171":"#a89eed",marginBottom:6,letterSpacing:".08em",textTransform:"uppercase",fontWeight:600 }}>{autoLost ? "💀 Final Verdict" : "📋 Coach's Feedback"}</div>
-                <div style={{ padding:"18px 22px",borderRadius:"18px 18px 18px 4px",fontSize:16,lineHeight:1.8,background:"rgba(20,20,32,0.92)",color:"#d4d0c8",border:`1px solid ${autoLost?"#7f1d1d":"#2a2a55"}`,backdropFilter:"blur(12px)",boxShadow:"0 4px 20px rgba(0,0,0,0.4)" }}>
+                <div style={{ fontSize:11,color:autoLost?"#f87171":drawResult?"#4fc3f7":"#a89eed",marginBottom:6,letterSpacing:".08em",textTransform:"uppercase",fontWeight:600 }}>{autoLost ? "💀 Final Verdict" : drawResult ? "🤝 Draw — Coach's Feedback" : "📋 Coach's Feedback"}</div>
+                <div style={{ padding:"18px 22px",borderRadius:"18px 18px 18px 4px",fontSize:16,lineHeight:1.8,background:"rgba(20,20,32,0.92)",color:"#d4d0c8",border:`1px solid ${autoLost?"#7f1d1d":drawResult?"#1d5a7f":"#2a2a55"}`,backdropFilter:"blur(12px)",boxShadow:"0 4px 20px rgba(0,0,0,0.4)" }}>
                   <Typewriter text={summary} onTick={() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }} />
                 </div>
+                {summaryTip && (
+                  <div className="mi" style={{ marginTop:10,padding:"14px 18px",background:"rgba(201,168,76,0.08)",border:`1px solid ${G}44`,borderRadius:12,display:"flex",gap:12,alignItems:"flex-start",maxWidth:"100%" }}>
+                    <span style={{ fontSize:20,flexShrink:0 }}>🎯</span>
+                    <div>
+                      <div style={{ fontSize:11,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4 }}>Key Tip</div>
+                      <div style={{ fontSize:15,color:"#e8e4dc",lineHeight:1.6 }}>{summaryTip}</div>
+                    </div>
+                  </div>
+                )}
                 <div style={{ display:"flex",alignItems:"center",gap:14,marginTop:14,padding:"14px 18px",background:"rgba(255,255,255,.02)",border:BDR,borderRadius:12,flexWrap:"wrap" }}>
                   <span style={{ fontSize:14,color:"#6b6860" }}>Avg score: <span style={{ color:sc(pendingResult?.avg ?? 0),fontWeight:700 }}>{pendingResult?.avg ?? "—"}/10</span></span>
                   {pointsRevealed
@@ -1020,7 +1125,7 @@ export default function App() {
               <div style={{ flex:1,position:"relative" }}>
                 <textarea value={input} onChange={e => { setInput(e.target.value); if (inputError) setInputError(""); }}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(false); } }}
-                  placeholder={`Make your argument — at least ${MIN_WORDS} words…`}
+                  placeholder={scores.length === 0 ? `Min. ${MIN_WORDS} words` : ""}
                   style={{ width:"100%",resize:"none",height:"52px",padding:"14px 18px",fontSize:15,fontFamily:"'Inter',sans-serif",background:"rgba(255,255,255,.04)",border:`1px solid ${inputError?"#7f1d1d":"#1e1e2e"}`,borderRadius:12,color:"#e8e4dc",lineHeight:1.4 }} />
                 {input.trim() && (() => {
                   const w = input.trim().split(/\s+/).filter(Boolean).length;
@@ -1028,8 +1133,14 @@ export default function App() {
                 })()}
                 {inputError && <div style={{ position:"absolute",left:2,top:-22,fontSize:12,color:"#f87171",fontWeight:500 }}>{inputError}</div>}
               </div>
-              <button disabled={loading || !input.trim()} onClick={() => send(false)}
-                style={{ height:"52px",padding:"0 28px",background:loading||!input.trim()?"rgba(255,255,255,.04)":`linear-gradient(135deg,${G},#b8962e)`,color:loading||!input.trim()?"#3a3a4e":"#0a0a0f",border:loading||!input.trim()?BDR:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:loading||!input.trim()?"not-allowed":"pointer",flexShrink:0,boxShadow:loading||!input.trim()?"none":`0 4px 16px ${G}44` }}>Send</button>
+              {(() => {
+                const wc = input.trim().split(/\s+/).filter(Boolean).length;
+                const canSend = !loading && wc >= MIN_WORDS;
+                return (
+                  <button disabled={!canSend} onClick={() => send(false)}
+                    style={{ height:"52px",padding:"0 28px",background:!canSend?"rgba(255,255,255,.04)":`linear-gradient(135deg,${G},#b8962e)`,color:!canSend?"#3a3a4e":"#0a0a0f",border:!canSend?BDR:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:!canSend?"not-allowed":"pointer",flexShrink:0,boxShadow:!canSend?"none":`0 4px 16px ${G}44` }}>Send</button>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -1062,12 +1173,15 @@ export default function App() {
           <div style={{ flex:1,padding:"14px 22px",display:"flex",flexDirection:"column",gap:12,minHeight:0 }}>
             <div>
               <div style={{ fontSize:10,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".12em",marginBottom:8 }}>Argument Score</div>
-              {[["🟢","Strong","8-10","#4ade80"],["🟡","Solid","6-7",G],["🟠","Weak","4-5","#fb923c"],["🔴","Poor","1-3","#f87171"]].map(([dot, l, r, col]) => (
-                <div key={l} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,padding:"7px 12px",background:"rgba(255,255,255,.02)",borderRadius:8,border:"1px solid #1e1e2e" }}>
-                  <span style={{ fontSize:14,color:"#c8c4b8" }}>{dot} {l}</span>
-                  <span style={{ fontSize:14,color:col,fontWeight:700 }}>{r}</span>
-                </div>
-              ))}
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 }}>
+                {[["🟢","Strong","8-10","#4ade80"],["🟡","Solid","6-7",G],["🟠","Weak","4-5","#fb923c"],["🔴","Poor","1-3","#f87171"]].map(([dot, l, r, col]) => (
+                  <div key={l} style={{ display:"flex",alignItems:"center",gap:6,padding:"6px 9px",background:"rgba(255,255,255,.02)",borderRadius:8,border:"1px solid #1e1e2e" }}>
+                    <span style={{ fontSize:12 }}>{dot}</span>
+                    <span style={{ fontSize:13,color:col,fontWeight:700 }}>{l}</span>
+                    <span style={{ fontSize:12,color:"#6b6860",marginLeft:"auto" }}>{r}</span>
+                  </div>
+                ))}
+              </div>
             </div>
             {/* Live match stats */}
             <div>
