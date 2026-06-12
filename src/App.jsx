@@ -370,6 +370,7 @@ export default function App() {
   const [intensity, setIntensity] = useState("sharp");
   const [traits, setTraits]       = useState([]);
   const [showTraits, setShowTraits] = useState(false);
+  const [traitsClosing, setTraitsClosing] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [statsClosing, setStatsClosing] = useState(false);
   const [msgs, setMsgs]           = useState([]);
@@ -505,9 +506,12 @@ export default function App() {
 
   // Return to a finished debate to review feedback, without wiping it
   const reviewLast = () => {
-    setLoading(false); setSumLoading(false); setTimerActive(false); setHintLoading(false);
+    setLoading(false); setSumLoading(false); setHintLoading(false);
     setMsgs(m => m.map(x => ({ ...x, fresh: false }))); // don't re-type on review
     setStage("debate");
+    // If the debate is still in progress (no summary), resume the timer
+    if (!summary && debateStarted) { setTimerKey(k => k + 1); setTimerActive(true); }
+    else setTimerActive(false);
   };
 
   const goHome = () => {
@@ -889,19 +893,21 @@ export default function App() {
         </div>
 
         {/* RIGHT */}
-        <div style={{ flex:1,display:"flex",flexDirection:"column",padding:"28px 36px",gap:12 }}>
-          <button onClick={() => setShowTraits(s => !s)} className="hov" style={{ background:"none",border:"none",cursor:"pointer",color:G,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:".14em",padding:0,display:"flex",alignItems:"center",gap:6 }}>
-            {showTraits ? "▾" : "▸"} Customize Claude's Style
+        <div style={{ flex:1,display:"flex",flexDirection:"column",padding:"28px 36px",gap:12,position:"relative" }}>
+          <button onClick={() => { if (showTraits) { setTraitsClosing(true); setTimeout(() => { setShowTraits(false); setTraitsClosing(false); }, 480); } else setShowTraits(true); }} className="hov" style={{ background:"none",border:"none",cursor:"pointer",color:G,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:".14em",padding:0,display:"flex",alignItems:"center",gap:6,zIndex:2 }}>
+            {showTraits && !traitsClosing ? "▾" : "▸"} Customize Claude's Style
           </button>
-          {showTraits && (
-            <div className="drawer" style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8 }}>
-              {TRAITS.map(t => (
-                <button key={t.id} className="hov" onClick={() => toggleTrait(t.id)}
-                  style={{ background:traits.includes(t.id)?"linear-gradient(135deg,#1a1208,#221808)":"rgba(255,255,255,.025)",border:traits.includes(t.id)?`1px solid ${G}66`:BDR,borderRadius:10,padding:"12px 14px",cursor:"pointer",textAlign:"left" }}>
-                  <div style={{ fontSize:13,fontWeight:600,color:traits.includes(t.id)?G:"#c8c4b8",marginBottom:3 }}>{t.label}</div>
-                  <div style={{ fontSize:12,color:"#5a5868" }}>{t.desc}</div>
-                </button>
-              ))}
+          {(showTraits || traitsClosing) && (
+            <div style={{ position:"absolute",top:54,left:36,right:36,zIndex:15,overflow:"hidden",borderRadius:12 }}>
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:12,background:"#0c0c16",border:`1px solid ${G}33`,borderRadius:12,boxShadow:"0 16px 40px rgba(0,0,0,0.6)",animation:traitsClosing?"drawerUp .5s cubic-bezier(.4,0,.2,1) forwards":"drawerDown .5s cubic-bezier(.16,1,.3,1) forwards" }}>
+                {TRAITS.map(t => (
+                  <button key={t.id} className="hov" onClick={() => toggleTrait(t.id)}
+                    style={{ background:traits.includes(t.id)?"linear-gradient(135deg,#1a1208,#221808)":"rgba(255,255,255,.025)",border:traits.includes(t.id)?`1px solid ${G}66`:BDR,borderRadius:10,padding:"12px 14px",cursor:"pointer",textAlign:"left" }}>
+                    <div style={{ fontSize:13,fontWeight:600,color:traits.includes(t.id)?G:"#c8c4b8",marginBottom:3 }}>{t.label}</div>
+                    <div style={{ fontSize:12,color:"#5a5868" }}>{t.desc}</div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           <div style={{ flex:1,background:"rgba(255,255,255,.02)",border:BDR,borderRadius:14,padding:"24px 28px",display:"flex",flexDirection:"column" }}>
@@ -930,9 +936,9 @@ export default function App() {
               <span style={{ fontSize:17,fontWeight:700,color:"#a89eed" }}>{maxHints}</span>
             </div>
           </div>
-          {summary && (
+          {(summary || (msgs.length > 0 && debateStarted)) && (
             <button onClick={reviewLast} className="bhov" style={{ width:"100%",padding:"12px",background:"rgba(168,158,237,0.1)",color:"#a89eed",border:"1px solid #534AB755",borderRadius:11,fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:-2 }}>
-              ↩ Review your last debate{pendingResult && !pointsRevealed ? " — points not yet revealed!" : ""}
+              ↩ {summary ? "Review your last debate" : "Resume your debate"}{pendingResult && !pointsRevealed ? " — points not yet revealed!" : ""}
             </button>
           )}
           <button disabled={!act || !side} className={act && side ? "bhov" : ""} onClick={enterArena}
@@ -953,7 +959,7 @@ export default function App() {
       {fxDamage && <DamageFlash />}
       {lvlModal && <LevelUpModal level={lvlModal} onClose={() => setLvlModal(null)} />}
       {confirmLeave && <ConfirmModal
-        onSave={() => { setConfirmLeave(false); endDebate(); }}
+        onSave={() => { setConfirmLeave(false); setTimerActive(false); setStage("setup"); }}
         onDiscard={() => { setConfirmLeave(false); setStage("setup"); }}
         onCancel={() => setConfirmLeave(false)} />}
       {confirmEarlyEnd && (
