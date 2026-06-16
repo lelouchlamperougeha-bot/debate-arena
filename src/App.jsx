@@ -1036,7 +1036,7 @@ export default function App() {
                   onFocus={() => setLockTipOpen(true)} onBlur={() => setLockTipOpen(false)}
                   style={{ position:"relative",display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",border:`1px solid ${lockTipOpen?"#a89eed":"#6b6860"}`,color:lockTipOpen?"#a89eed":"#8a8680",fontSize:10,fontWeight:700,cursor:"default",flexShrink:0,fontFamily:"Georgia,serif",transition:"all .15s ease" }}>
                   i
-                  <span style={{ position:"absolute",bottom:"calc(100% + 8px)",left:"50%",transform:"translateX(-50%)",width:220,padding:"10px 12px",borderRadius:8,background:"#16141f",border:"1px solid #3a3a4e",boxShadow:"0 6px 20px rgba(0,0,0,.5)",fontSize:12,lineHeight:1.5,color:"#c8c4bc",fontWeight:400,letterSpacing:"normal",textTransform:"none",zIndex:20,pointerEvents:"none",opacity:lockTipOpen?1:0,transition:"opacity .15s ease" }}>
+                  <span style={{ position:"absolute",bottom:"calc(100% + 8px)",left:"50%",transform:"translateX(-50%)",width:"max-content",maxWidth:240,padding:"10px 14px",borderRadius:8,background:"#16141f",border:"1px solid #3a3a4e",boxShadow:"0 6px 20px rgba(0,0,0,.5)",fontSize:12,lineHeight:1.5,color:"#c8c4bc",fontWeight:400,letterSpacing:"normal",textTransform:"none",textAlign:"center",zIndex:20,pointerEvents:"none",opacity:lockTipOpen?1:0,transition:"opacity .15s ease" }}>
                     Finish any match with a positive point gain to unlock today's daily challenge. Resets each day.
                   </span>
                 </span>
