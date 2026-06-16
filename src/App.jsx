@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 const G = "#c9a84c";
 const BDR = "1px solid #1e1e2e";
 
-const LEVEL_TIME = { "Novice":120,"Debater":100,"Rhetorician":80,"Sophist":60,"Orator":45,"Philosopher King":30 };
+const LEVEL_TIME = { "Novice":150,"Debater":130,"Rhetorician":110,"Sophist":90,"Orator":75,"Philosopher King":60 };
 const LEVEL_HINTS = { "Novice":3,"Debater":2,"Rhetorician":1,"Sophist":1,"Orator":0,"Philosopher King":0 };
 const MIN_WORDS = 20;
 
@@ -108,6 +108,55 @@ const ALL_TOPICS = [
   { label:"Morality is relative — nothing is truly right or wrong",d:5,cat:"🧠 Philosophy" },
   { label:"A world government is the only way to solve global problems",d:5,cat:"⚔️ Geopolitics" },
   { label:"Democracy will not survive the age of AI",d:5,cat:"🤖 AI" },
+  { label:"Tipping culture has gotten out of control",d:1,cat:"🍔 Food" },
+  { label:"Remote work is better than office work",d:1,cat:"💼 Work" },
+  { label:"Audiobooks count as 'reading'",d:1,cat:"📖 Culture" },
+  { label:"Dogs in restaurants should be allowed",d:1,cat:"🐾 Pets" },
+  { label:"Group projects do more harm than good",d:1,cat:"🎓 Education" },
+  { label:"Reality TV is rotting our brains",d:1,cat:"🎬 Entertainment" },
+  { label:"Cancelling plans last-minute is rude no matter what",d:1,cat:"👥 Relationships" },
+  { label:"Energy drinks should be banned for under-18s",d:1,cat:"🍔 Health" },
+  { label:"Subtitles are better than dubbing",d:1,cat:"🎬 Entertainment" },
+  { label:"Working out in the morning beats working out at night",d:1,cat:"💪 Health" },
+  { label:"Self-checkout machines are worse than human cashiers",d:2,cat:"🛒 Lifestyle" },
+  { label:"Influencers are a legitimate career",d:2,cat:"📱 Social Media" },
+  { label:"Standardized testing should be abolished",d:2,cat:"🎓 Education" },
+  { label:"Streaming has made music worse",d:2,cat:"🎵 Culture" },
+  { label:"Professional athletes are paid far too much",d:2,cat:"⚽ Sports" },
+  { label:"AI-generated art is real art",d:2,cat:"🎨 Art" },
+  { label:"Veganism is the only ethical diet",d:2,cat:"🥗 Ethics" },
+  { label:"Plastic bag bans actually help the environment",d:2,cat:"🌍 Environment" },
+  { label:"Daylight saving time should be abolished",d:2,cat:"⏰ Lifestyle" },
+  { label:"College is no longer worth the cost",d:3,cat:"🎓 Education" },
+  { label:"Social media should be banned for under-16s",d:3,cat:"📱 Social Media" },
+  { label:"The four-day work week should be standard",d:3,cat:"💼 Work" },
+  { label:"Cryptocurrency is mostly a scam",d:3,cat:"💸 Economy" },
+  { label:"Cars should be banned from city centers",d:3,cat:"🚌 Transport" },
+  { label:"Cancel culture has gone too far",d:3,cat:"📱 Society" },
+  { label:"Billionaires should not exist",d:3,cat:"💸 Economy" },
+  { label:"The monarchy should be abolished",d:3,cat:"👑 Politics" },
+  { label:"Gambling advertising should be banned entirely",d:3,cat:"🎰 Society" },
+  { label:"Space exploration is a waste of money",d:3,cat:"🚀 Science" },
+  { label:"Voting should be mandatory",d:3,cat:"🗳️ Politics" },
+  { label:"Animal testing is never justified",d:3,cat:"🦁 Ethics" },
+  { label:"Universal basic income would do more good than harm",d:4,cat:"💸 Economy" },
+  { label:"Privacy is dead and that's not entirely a bad thing",d:4,cat:"💻 Technology" },
+  { label:"Renewable energy alone cannot power the world",d:4,cat:"⚡ Science" },
+  { label:"The death penalty is never justifiable",d:4,cat:"⚖️ Ethics" },
+  { label:"Open borders would benefit the world",d:4,cat:"🌍 Politics" },
+  { label:"Capitalism does more harm than good",d:4,cat:"💸 Economy" },
+  { label:"Free speech should have no legal limits",d:4,cat:"⚖️ Politics" },
+  { label:"Genetic engineering of humans should be allowed",d:4,cat:"🧬 Science" },
+  { label:"Religion does more harm than good",d:4,cat:"🛐 Philosophy" },
+  { label:"Effective altruism is fundamentally flawed",d:5,cat:"🧠 Philosophy" },
+  { label:"Consciousness cannot be explained by physics alone",d:5,cat:"🧠 Philosophy" },
+  { label:"Taiwan's independence is worth risking war over",d:5,cat:"⚔️ Geopolitics" },
+  { label:"The UN is obsolete and should be dissolved",d:5,cat:"⚔️ Geopolitics" },
+  { label:"Human gene editing will deepen global inequality",d:5,cat:"🧬 Science" },
+  { label:"We are likely living in a simulation",d:5,cat:"🧠 Philosophy" },
+  { label:"Degrowth is the only way to save the planet",d:5,cat:"🌍 Environment" },
+  { label:"Superintelligent AI cannot be aligned with human values",d:5,cat:"🤖 AI" },
+  { label:"National sovereignty should yield to climate enforcement",d:5,cat:"⚔️ Geopolitics" },
 ];
 
 const DC = {1:"#4ade80",2:"#a3e635",3:"#c9a84c",4:"#fb923c",5:"#f87171"};
@@ -403,9 +452,13 @@ export default function App() {
   const [fxConfetti, setFxConfetti] = useState(false);
   const [fxDamage, setFxDamage] = useState(false);
   const [shuffleKey, setShuffleKey] = useState(0);
+  const [speedRound, setSpeedRound] = useState(false);
   const chatRef = useRef(null);
+  const recentRef = useRef([]);
 
   const act   = custom.trim() || topic;
+  // Make non-button clickable cards keyboard-operable (Enter/Space activate)
+  const kbd = fn => ({ role:"button", tabIndex:0, onKeyDown:e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } } });
   const level = getLevel(rating);
   const nxt   = LEVELS[LEVELS.indexOf(level) + 1];
   const pct   = nxt ? ((rating - level.min) / (nxt.min - level.min)) * 100 : 100;
@@ -413,13 +466,17 @@ export default function App() {
   const delta = prevRating !== null ? rating - prevRating : null;
   const sc    = s => s >= 8 ? "#4ade80" : s >= 6 ? G : s >= 4 ? "#fb923c" : "#f87171";
   const sl    = s => s >= 8 ? "Strong" : s >= 6 ? "Solid" : s >= 4 ? "Weak" : "Poor";
-  const timeLimit = LEVEL_TIME[level.name] || 60;
+  const timeLimit = speedRound ? 30 : (LEVEL_TIME[level.name] || 60);
+  const minWords = speedRound ? 8 : MIN_WORDS;
+  // Combo streak: consecutive trailing rounds scored 7+
+  let streak = 0; for (let i = scores.length - 1; i >= 0; i--) { if (scores[i] >= 7) streak++; else break; }
+  const comboMult = streak >= 3 ? 1.15 : 1;
   const maxHints = LEVEL_HINTS[level.name] ?? 0;
 
   useEffect(() => { saveSt({ rating, trophies, bonusNext, pinned }); }, [rating, trophies, bonusNext, pinned]);
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [msgs, loading, summary]);
 
-  const refresh = () => { setTopics(pickTopics(rating, topics.map(t => t.label))); setTopic(""); setCustom(""); setShuffleKey(k => k + 1); };
+  const refresh = () => { const next = pickTopics(rating, [...recentRef.current, ...topics.map(t => t.label)]); next.forEach(t => { recentRef.current.push(t.label); }); const cap = Math.max(0, ALL_TOPICS.filter(t => t.d <= getMaxDiff(rating)).length - 4); if (recentRef.current.length > cap) recentRef.current = recentRef.current.slice(recentRef.current.length - cap); setTopics(next); setTopic(""); setCustom(""); setShuffleKey(k => k + 1); };
   const toggleStats = () => {
     if (showStats) { setStatsClosing(true); setTimeout(() => { setShowStats(false); setStatsClosing(false); }, 540); }
     else setShowStats(true);
@@ -504,13 +561,21 @@ export default function App() {
     setTimeout(() => setTransitioning(false), 2000);
   };
 
+  // Rematch: replay the same topic. swap=true flips to the opposite side.
+  const rematch = (swap = false) => {
+    if (swap) setSide(s => (s === "for" ? "against" : "for"));
+    setInput("");
+    enterArena();
+  };
+
   // Return to a finished debate to review feedback, without wiping it
   const reviewLast = () => {
     setLoading(false); setSumLoading(false); setHintLoading(false);
     setMsgs(m => m.map(x => ({ ...x, fresh: false }))); // don't re-type on review
     setStage("debate");
-    // If the debate is still in progress (no summary), resume the timer
-    if (!summary && debateStarted) { setTimerKey(k => k + 1); setTimerActive(true); }
+    // If the debate is still in progress (no summary), resume with a FRESH timer
+    // and discard any half-typed draft from before they left.
+    if (!summary && debateStarted) { setInput(""); setInputError(""); setHint(""); setTimerKey(k => k + 1); setTimerActive(true); }
     else setTimerActive(false);
   };
 
@@ -525,8 +590,8 @@ export default function App() {
     // Enforce minimum word count on real submissions
     if (!timedOut) {
       const words = input.trim().split(/\s+/).filter(Boolean).length;
-      if (words < MIN_WORDS) {
-        setInputError(`Develop your argument — at least ${MIN_WORDS} words (you have ${words}).`);
+      if (words < minWords) {
+        setInputError(`Develop your argument — at least ${minWords} words (you have ${words}).`);
         return;
       }
     }
@@ -595,6 +660,10 @@ export default function App() {
     // Fewer than 5 rounds: you can still LOSE points, but you cannot GAIN them
     if (!eligibleForGains && d > 0) d = 0;
 
+    // Combo bonus: a sustained run of strong rounds (3+ in a row scored 7+) boosts gains
+    let comboBonus = false;
+    if (eligibleForGains && d > 0 && comboMult > 1) { d = Math.round(d * comboMult); comboBonus = true; }
+
     // 2x bonus from a previous 9+ debate applies to positive gains only
     const bonusApplied = bonusNext && d > 0;
     if (bonusApplied) d *= 2;
@@ -607,7 +676,7 @@ export default function App() {
     setPendingResult({
       delta: d, oldRating: old, newRating: nw, avg: Math.round(a * 10) / 10,
       levelChanged: nl.name !== ol.name, newLevel: nl, deranked: nw < old,
-      bonusApplied, bonusEarned, rounds: round, roundsPlayed, eligibleForGains, draw,
+      bonusApplied, bonusEarned, rounds: round, roundsPlayed, eligibleForGains, draw, comboBonus, streak,
     });
     setPointsRevealed(false);
 
@@ -717,6 +786,7 @@ export default function App() {
     .bhov:hover{filter:brightness(1.08);transform:translateY(-1px)}
     .hint-loading{background:linear-gradient(90deg,#534AB733 25%,#a89eed44 50%,#534AB733 75%);background-size:200% 100%;animation:shimmer 1.2s linear infinite}
     input:focus,textarea:focus{outline:none;border-color:#c9a84c!important;box-shadow:0 0 0 3px #c9a84c18!important}
+    button:focus-visible,[role="button"]:focus-visible,.hov:focus-visible{outline:2px solid #c9a84c!important;outline-offset:2px!important;border-radius:10px}
     ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px}
   `;
 
@@ -869,7 +939,7 @@ export default function App() {
           <div style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G }}>Your Side</div>
           {[["for","👍","I'm FOR it","You argue in favor — Claude argues against"],
             ["against","👎","I'm AGAINST it","You argue against — Claude argues in favor"]].map(([v, ic, ti, de]) => (
-            <div key={v} className="hov" onClick={() => setSide(v)}
+            <div key={v} className="hov" onClick={() => setSide(v)} {...kbd(() => setSide(v))} aria-pressed={side===v}
               style={{ flex:1,background:side===v?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:side===v?"1px solid #6058c8":BDR,borderRadius:14,padding:"22px",cursor:"pointer",display:"flex",alignItems:"center",gap:20,position:"relative",overflow:"hidden",boxShadow:side===v?"0 0 24px #534AB722":"none" }}>
               <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:side===v?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
               <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:`linear-gradient(90deg,transparent,${side===v?"#6058c8":"#2a2a3e"},transparent)` }} />
@@ -936,15 +1006,29 @@ export default function App() {
               <span style={{ fontSize:17,fontWeight:700,color:"#a89eed" }}>{maxHints}</span>
             </div>
           </div>
+          <button className="bhov" onClick={() => setSpeedRound(s => !s)} aria-pressed={speedRound}
+            style={{ width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"12px 16px",borderRadius:10,cursor:"pointer",
+              background:speedRound?"linear-gradient(135deg,#2a1208,#3a1a08)":"rgba(255,255,255,.025)",
+              border:speedRound?"1px solid #f9731688":BDR,boxShadow:speedRound?"0 0 18px #f9731622":"none" }}>
+            <span style={{ display:"flex",flexDirection:"column",textAlign:"left" }}>
+              <span style={{ fontSize:14,fontWeight:700,color:speedRound?"#fb923c":"#c8c4bc" }}>⚡ Speed Round</span>
+              <span style={{ fontSize:11,color:"#6b6860" }}>30s timer · {speedRound?8:"8"}-word minimum</span>
+            </span>
+            <span style={{ width:42,height:24,borderRadius:20,padding:2,background:speedRound?"#f97316":"#2a2a3e",transition:"all .2s",flexShrink:0 }}>
+              <span style={{ display:"block",width:20,height:20,borderRadius:"50%",background:"#fff",transform:speedRound?"translateX(18px)":"translateX(0)",transition:"all .2s" }} />
+            </span>
+          </button>
           {(summary || (msgs.length > 0 && debateStarted)) && (
             <button onClick={reviewLast} className="bhov" style={{ width:"100%",padding:"12px",background:"rgba(168,158,237,0.1)",color:"#a89eed",border:"1px solid #534AB755",borderRadius:11,fontSize:14,fontWeight:600,cursor:"pointer",marginBottom:-2 }}>
               ↩ {summary ? "Review your last debate" : "Resume your debate"}{pendingResult && !pointsRevealed ? " — points not yet revealed!" : ""}
             </button>
           )}
+          {!(msgs.length > 0 && debateStarted && !summary) && (
           <button disabled={!act || !side} className={act && side ? "bhov" : ""} onClick={enterArena}
             style={{ width:"100%",padding:"20px",background:act&&side?`linear-gradient(135deg,${G},#b8962e)`:"rgba(255,255,255,.04)",color:act&&side?"#0a0a0f":"#3a3a4e",border:act&&side?"none":BDR,borderRadius:12,fontSize:17,fontWeight:700,letterSpacing:".06em",cursor:act&&side?"pointer":"not-allowed",transition:"all .2s",boxShadow:act&&side?`0 4px 24px ${G}44`:"none" }}>
             {act && side ? "⚔️  ENTER THE ARENA" : "Select a topic & side first"}
           </button>
+          )}
         </div>
       </div>
     </div>
@@ -1078,7 +1162,11 @@ export default function App() {
                 <div style={{ display:"flex",alignItems:"center",gap:14,marginTop:14,padding:"14px 18px",background:"rgba(255,255,255,.02)",border:BDR,borderRadius:12,flexWrap:"wrap" }}>
                   <span style={{ fontSize:14,color:"#6b6860" }}>Avg score: <span style={{ color:sc(pendingResult?.avg ?? 0),fontWeight:700 }}>{pendingResult?.avg ?? "—"}/10</span></span>
                   {pointsRevealed
-                    ? <button onClick={() => setStage("setup")} className="bhov" style={{ padding:"10px 24px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",marginLeft:"auto" }}>New Debate →</button>
+                    ? <div style={{ display:"flex",gap:8,marginLeft:"auto",flexWrap:"wrap" }}>
+                        <button onClick={() => rematch(false)} className="bhov" style={{ padding:"10px 18px",background:"rgba(168,158,237,0.1)",color:"#a89eed",border:"1px solid #534AB755",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer" }}>↻ Rematch</button>
+                        <button onClick={() => rematch(true)} className="bhov" style={{ padding:"10px 18px",background:"rgba(168,158,237,0.1)",color:"#a89eed",border:"1px solid #534AB755",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer" }}>⇄ Swap Sides</button>
+                        <button onClick={() => setStage("setup")} className="bhov" style={{ padding:"10px 24px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer" }}>New Debate →</button>
+                      </div>
                     : <span style={{ fontSize:13,color:"#a89eed",marginLeft:"auto",fontWeight:600 }}>→ Reveal your points in the sidebar</span>}
                 </div>
               </div>
@@ -1131,17 +1219,17 @@ export default function App() {
               <div style={{ flex:1,position:"relative" }}>
                 <textarea value={input} onChange={e => { setInput(e.target.value); if (inputError) setInputError(""); }}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(false); } }}
-                  placeholder={scores.length === 0 ? `Min. ${MIN_WORDS} words` : ""}
+                  placeholder={scores.length === 0 ? `Min. ${minWords} words` : ""}
                   style={{ width:"100%",resize:"none",height:"52px",padding:"14px 18px",fontSize:15,fontFamily:"'Inter',sans-serif",background:"rgba(255,255,255,.04)",border:`1px solid ${inputError?"#7f1d1d":"#1e1e2e"}`,borderRadius:12,color:"#e8e4dc",lineHeight:1.4 }} />
                 {input.trim() && (() => {
                   const w = input.trim().split(/\s+/).filter(Boolean).length;
-                  return <span style={{ position:"absolute",right:12,bottom:6,fontSize:11,color:w>=MIN_WORDS?"#4ade80":"#6b6860",fontWeight:600 }}>{w}/{MIN_WORDS}</span>;
+                  return <span style={{ position:"absolute",right:12,bottom:6,fontSize:11,color:w>=minWords?"#4ade80":"#6b6860",fontWeight:600 }}>{w}/{minWords}</span>;
                 })()}
                 {inputError && <div style={{ position:"absolute",left:2,top:-22,fontSize:12,color:"#f87171",fontWeight:500 }}>{inputError}</div>}
               </div>
               {(() => {
                 const wc = input.trim().split(/\s+/).filter(Boolean).length;
-                const canSend = !loading && wc >= MIN_WORDS;
+                const canSend = !loading && wc >= minWords;
                 return (
                   <button disabled={!canSend} onClick={() => send(false)}
                     style={{ height:"52px",padding:"0 28px",background:!canSend?"rgba(255,255,255,.04)":`linear-gradient(135deg,${G},#b8962e)`,color:!canSend?"#3a3a4e":"#0a0a0f",border:!canSend?BDR:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:!canSend?"not-allowed":"pointer",flexShrink:0,boxShadow:!canSend?"none":`0 4px 16px ${G}44` }}>Send</button>
@@ -1189,6 +1277,17 @@ export default function App() {
                 ))}
               </div>
             </div>
+            {streak >= 2 && (
+              <div style={{ padding:"10px 12px",borderRadius:10,background:streak>=3?"linear-gradient(135deg,#2a1208,#1a0f04)":"rgba(255,255,255,.02)",border:streak>=3?"1px solid #f9731688":"1px solid #1e1e2e",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8 }}>
+                <span style={{ display:"flex",flexDirection:"column" }}>
+                  <span style={{ fontSize:13,fontWeight:800,color:streak>=3?"#fb923c":"#c8c4bc" }}>🔥 {streak} Combo</span>
+                  <span style={{ fontSize:10,color:"#6b6860" }}>{streak>=3?"+15% bonus active":"3-streak unlocks +15%"}</span>
+                </span>
+                <span style={{ display:"flex",gap:3 }}>
+                  {[0,1,2].map(i => <span key={i} style={{ width:8,height:8,borderRadius:"50%",background:i<Math.min(streak,3)?"#f97316":"#2a2a3e",boxShadow:i<Math.min(streak,3)?"0 0 6px #f97316aa":"none" }} />)}
+                </span>
+              </div>
+            )}
             {/* Live match stats */}
             <div>
               <div style={{ fontSize:10,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:".12em",marginBottom:8 }}>This Match</div>
@@ -1231,6 +1330,7 @@ export default function App() {
                     {pendingResult.delta>0?"+":""}{pendingResult.delta} <span style={{ fontSize:18 }}>pts</span>
                   </div>
                   {pendingResult.bonusApplied && <div style={{ fontSize:12,color:G,fontWeight:700,marginTop:5,animation:"msgIn .5s ease .3s both" }}>✨ 2x bonus applied!</div>}
+                  {pendingResult.comboBonus && <div style={{ fontSize:12,color:"#fb923c",fontWeight:700,marginTop:5,animation:"msgIn .5s ease .35s both" }}>🔥 {pendingResult.streak} combo · +15%</div>}
                   {pendingResult.bonusEarned && <div style={{ fontSize:12,color:"#4ade80",fontWeight:600,marginTop:5,animation:"msgIn .5s ease .4s both" }}>9+ avg — next debate is 2x!</div>}
                   {pendingResult.delta===0 && !pendingResult.eligibleForGains && <div style={{ fontSize:12,color:"#6b6860",marginTop:5 }}>Under 5 rounds — no gain</div>}
                 </div>
