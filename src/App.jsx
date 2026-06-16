@@ -420,13 +420,16 @@ export default function App() {
   const [pinned, setPinned]       = useState(saved?.pinned ?? []);
   // { day: "YYYY-M-D", best: <avg score> } — best avg achieved on today's daily challenge
   const [dailyBest, setDailyBest] = useState(() => (saved?.dailyBest?.day === dayKey() ? saved.dailyBest : null));
+  // Daily challenge unlocks for the day once the user earns positive points; re-locks at midnight
+  const [dailyUnlockDay, setDailyUnlockDay] = useState(() => (saved?.dailyUnlockDay === dayKey() ? saved.dailyUnlockDay : null));
   const [isDaily, setIsDaily]     = useState(false);
+  const [dailyPicked, setDailyPicked] = useState(false);
   const [viewDebate, setViewDebate] = useState(null); // a past debate opened for review
   const [topics, setTopics]       = useState(() => pickTopics(saved?.rating ?? 0));
   const [stage, setStage]         = useState("setup");
   const [debateStarted, setDebateStarted] = useState(false);
   const [topic, setTopic]         = useState("");
-  const [custom, setCustom]       = useState("");
+  const [dailyShown, setDailyShown] = useState(false);
   const [side, setSide]           = useState("");
   const [intensity, setIntensity] = useState("sharp");
   const [traits, setTraits]       = useState([]);
@@ -469,7 +472,8 @@ export default function App() {
   const chatRef = useRef(null);
   const recentRef = useRef([]);
 
-  const act   = custom.trim() || topic;
+  const act   = topic;
+  const dailyUnlocked = dailyUnlockDay === dayKey();
   // Make non-button clickable cards keyboard-operable (Enter/Space activate)
   const kbd = fn => ({ role:"button", tabIndex:0, onKeyDown:e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } } });
   const level = getLevel(rating);
@@ -486,10 +490,9 @@ export default function App() {
   const comboMult = streak >= 3 ? 1.15 : 1;
   const maxHints = LEVEL_HINTS[level.name] ?? 0;
 
-  useEffect(() => { saveSt({ rating, trophies, bonusNext, pinned, dailyBest }); }, [rating, trophies, bonusNext, pinned, dailyBest]);
+  useEffect(() => { saveSt({ rating, trophies, bonusNext, pinned, dailyBest, dailyUnlockDay }); }, [rating, trophies, bonusNext, pinned, dailyBest, dailyUnlockDay]);
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [msgs, loading, summary]);
 
-  const refresh = () => { const next = pickTopics(rating, [...recentRef.current, ...topics.map(t => t.label)]); next.forEach(t => { recentRef.current.push(t.label); }); const cap = Math.max(0, ALL_TOPICS.filter(t => t.d <= getMaxDiff(rating)).length - 4); if (recentRef.current.length > cap) recentRef.current = recentRef.current.slice(recentRef.current.length - cap); setTopics(next); setTopic(""); setCustom(""); setShuffleKey(k => k + 1); };
   const toggleStats = () => {
     if (showStats) { setStatsClosing(true); setTimeout(() => { setShowStats(false); setStatsClosing(false); }, 540); }
     else setShowStats(true);
@@ -592,14 +595,6 @@ export default function App() {
   };
 
   // Daily challenge: load today's seeded topic, default side FOR, and enter
-  const startDaily = () => {
-    const dt = dailyTopic();
-    setTopic(dt.label); setCustom(""); setSpeedRound(false);
-    if (!side) setSide("for");
-    setIsDaily(true);
-    enterArena();
-  };
-
   // Generate a shareable result card (PNG) from the finished debate and download it
   const shareCard = () => {
     const r = pendingResult; if (!r) return;
@@ -838,7 +833,7 @@ export default function App() {
     setTrophies(t => [{ id: Date.now() + "-" + Math.random().toString(36).slice(2,7), topic: act, side, avg: r.avg, delta: effDelta, date: new Date().toLocaleDateString(), rounds: r.rounds, draw: r.draw, hist, msgs, intensity, traits }, ...t].slice(0, 20));
     setBonusNext(r.bonusEarned);
     if (r.levelChanged) setTimeout(() => setLvlModal({ ...r.newLevel, deranked: r.deranked }), 900);
-    if (effDelta > 0) { setFxConfetti(true); setTimeout(() => setFxConfetti(false), 3500); }
+    if (effDelta > 0) { setFxConfetti(true); setTimeout(() => setFxConfetti(false), 3500); setDailyUnlockDay(dayKey()); }
     else if (effDelta < 0) { setFxDamage(true); setTimeout(() => setFxDamage(false), 1100); }
     setPointsRevealed(true);
   };
@@ -1006,32 +1001,18 @@ export default function App() {
         <div style={{ flex:1,borderRight:BDR,display:"flex",flexDirection:"column",padding:"28px 36px",gap:10 }}>
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}>
             <span style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G }}>Pick Your Battleground</span>
-            <button onClick={refresh} className="hov" style={{ background:"rgba(255,255,255,.04)",border:BDR,borderRadius:7,padding:"5px 14px",fontSize:15,color:"#6b6860",cursor:"pointer" }}><span key={shuffleKey} style={{ display:"inline-block",animation:"spin360 .5s ease" }}>↻</span></button>
           </div>
-          {(() => { const dt = dailyTopic(); const doneToday = dailyBest && dailyBest.day === dayKey(); return (
-            <button onClick={startDaily} className="bhov" style={{ width:"100%",textAlign:"left",padding:"14px 16px",borderRadius:12,cursor:"pointer",
-              background:"linear-gradient(135deg,#1a1530,#221a3d)",border:"1px solid #6058c8",boxShadow:"0 0 20px #534AB722",position:"relative",overflow:"hidden" }}>
-              <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:"linear-gradient(180deg,#8b7ff0,transparent)" }} />
-              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:4 }}>
-                <span style={{ fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"#a89eed" }}>⭐ Daily Challenge</span>
-                {doneToday
-                  ? <span style={{ fontSize:11,fontWeight:700,color:"#4ade80" }}>Best today: {dailyBest.best}/10</span>
-                  : <span style={{ fontSize:11,fontWeight:600,color:"#6b6860" }}>New each day</span>}
-              </div>
-              <div style={{ fontSize:14,fontWeight:600,color:"#e8e4dc",lineHeight:1.4 }}>{dt.label}</div>
-            </button>
-          ); })()}
           {topics.map((t, ti) => (
-            <button key={`${shuffleKey}-${t.label}`} className="hov" onClick={() => { setTopic(t.label); setCustom(""); }}
-              style={{ flex:1,background:topic===t.label&&!custom?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:topic===t.label&&!custom?"1px solid #6058c8":BDR,borderRadius:12,padding:"16px 18px",color:topic===t.label&&!custom?"#c0b8f0":"#a0a098",cursor:"pointer",display:"flex",flexDirection:"column",textAlign:"left",position:"relative",overflow:"hidden",boxShadow:topic===t.label&&!custom?"0 0 24px #534AB722":"none",animation:`shuffleIn .5s cubic-bezier(.2,.8,.2,1) ${ti*0.07}s both` }}>
-              <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:topic===t.label&&!custom?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
-              <div style={{ position:"absolute",bottom:0,left:"8%",right:"8%",height:1,background:`linear-gradient(90deg,transparent,${topic===t.label&&!custom?"#6058c8":"#2a2a3e"},transparent)` }} />
+            <button key={`${shuffleKey}-${t.label}`} className="hov" onClick={() => { setTopic(t.label); }}
+              style={{ flex:1,background:topic===t.label?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:topic===t.label?"1px solid #6058c8":BDR,borderRadius:12,padding:"16px 18px",color:topic===t.label?"#c0b8f0":"#a0a098",cursor:"pointer",display:"flex",flexDirection:"column",textAlign:"left",position:"relative",overflow:"hidden",boxShadow:topic===t.label?"0 0 24px #534AB722":"none",animation:`shuffleIn .5s cubic-bezier(.2,.8,.2,1) ${ti*0.07}s both` }}>
+              <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:topic===t.label?"linear-gradient(180deg,#6058c8,transparent)":"transparent",transition:"all .2s" }} />
+              <div style={{ position:"absolute",bottom:0,left:"8%",right:"8%",height:1,background:`linear-gradient(90deg,transparent,${topic===t.label?"#6058c8":"#2a2a3e"},transparent)` }} />
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,position:"relative",zIndex:1 }}>
                 <span style={{ fontSize:12,color:"#9a9690",fontWeight:700,letterSpacing:".06em",textTransform:"uppercase" }}>{t.cat.split(" ").slice(1).join(" ")}</span>
                 <span style={{ fontSize:11,color:DC[t.d],fontWeight:700,background:DC[t.d]+"18",padding:"2px 10px",borderRadius:20,border:`1px solid ${DC[t.d]}33` }}>{DL[t.d]}</span>
               </div>
               <div style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"4px 0 0",position:"relative",zIndex:1 }}>
-                <span style={{ fontSize:19,lineHeight:1.4,fontFamily:"'Playfair Display',serif",fontWeight:700,color:topic===t.label&&!custom?"#f0ece4":"#d4d0c8" }}>{t.label} {t.cat.split(" ")[0]}</span>
+                <span style={{ fontSize:19,lineHeight:1.4,fontFamily:"'Playfair Display',serif",fontWeight:700,color:topic===t.label?"#f0ece4":"#d4d0c8" }}>{t.label} {t.cat.split(" ")[0]}</span>
               </div>
             </button>
           ))}
@@ -1043,11 +1024,36 @@ export default function App() {
               </div>
             ))}
           </div>
-          <div>
-            <div style={{ fontSize:12,color:"#5a5868",marginBottom:8,fontWeight:500 }}>Or type your own topic:</div>
-            <input value={custom} onChange={e => { setCustom(e.target.value); setTopic(""); }}
-              style={{ width:"100%",background:"rgba(255,255,255,.03)",border:BDR,borderRadius:10,padding:"14px 18px",fontSize:16,color:"#e8e4dc",fontFamily:"'Inter',sans-serif" }} />
-          </div>
+          {(() => {
+            const dt = dailyTopic();
+            const doneToday = dailyBest && dailyBest.day === dayKey();
+            if (!dailyUnlocked) return (
+              <div style={{ width:"100%",padding:"14px 16px",borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px dashed #3a3a4e",position:"relative",overflow:"hidden" }}>
+                <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:4 }}>
+                  <span style={{ fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"#6b6860" }}>🔒 Daily Challenge — Locked</span>
+                </div>
+                <div style={{ fontSize:13,color:"#8a8680",lineHeight:1.5 }}>Win points in a debate first. Finish any match with a positive point gain to unlock today's daily challenge. Resets each day.</div>
+              </div>
+            );
+            return (
+              <button onClick={() => { if (!dailyShown) { setDailyShown(true); } setTopic(dt.label); setIsDaily(true); }}
+                aria-pressed={topic===dt.label}
+                className="bhov" style={{ width:"100%",textAlign:"left",padding:"14px 16px",borderRadius:12,cursor:"pointer",
+                  background:topic===dt.label?"linear-gradient(135deg,#221a3d,#2c2150)":"linear-gradient(135deg,#1a1530,#221a3d)",
+                  border:topic===dt.label?"1px solid #8b7ff0":"1px solid #6058c8",boxShadow:"0 0 20px #534AB722",position:"relative",overflow:"hidden" }}>
+                <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:"linear-gradient(180deg,#8b7ff0,transparent)" }} />
+                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:4 }}>
+                  <span style={{ fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"#a89eed" }}>⭐ Daily Challenge</span>
+                  {doneToday
+                    ? <span style={{ fontSize:11,fontWeight:700,color:"#4ade80" }}>Best today: {dailyBest.best}/10</span>
+                    : <span style={{ fontSize:11,fontWeight:600,color:"#6b6860" }}>Unlocked</span>}
+                </div>
+                <div style={{ fontSize:14,fontWeight:600,color:"#e8e4dc",lineHeight:1.4 }}>
+                  {dailyShown ? dt.label : <span style={{ color:"#a89eed" }}>Tap to reveal today's topic →</span>}
+                </div>
+              </button>
+            );
+          })()}
         </div>
 
         {/* MIDDLE */}
@@ -1140,7 +1146,7 @@ export default function App() {
             </button>
           )}
           {!(msgs.length > 0 && debateStarted && !summary) && (
-          <button disabled={!act || !side} className={act && side ? "bhov" : ""} onClick={() => { setIsDaily(false); enterArena(); }}
+          <button disabled={!act || !side} className={act && side ? "bhov" : ""} onClick={() => { setIsDaily(dailyUnlocked && topic === dailyTopic().label); enterArena(); }}
             style={{ width:"100%",padding:"20px",background:act&&side?`linear-gradient(135deg,${G},#b8962e)`:"rgba(255,255,255,.04)",color:act&&side?"#0a0a0f":"#3a3a4e",border:act&&side?"none":BDR,borderRadius:12,fontSize:17,fontWeight:700,letterSpacing:".06em",cursor:act&&side?"pointer":"not-allowed",transition:"all .2s",boxShadow:act&&side?`0 4px 24px ${G}44`:"none" }}>
             {act && side ? "⚔️  ENTER THE ARENA" : "Select a topic & side first"}
           </button>
@@ -1337,7 +1343,7 @@ export default function App() {
               <div style={{ flex:1,position:"relative" }}>
                 <textarea value={input} onChange={e => { setInput(e.target.value); if (inputError) setInputError(""); }}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(false); } }}
-                  placeholder={scores.length === 0 ? `Min. ${minWords} words` : ""}
+                  placeholder={`Make your case — at least ${minWords} words…`}
                   style={{ width:"100%",resize:"none",height:"52px",padding:"14px 18px",fontSize:15,fontFamily:"'Inter',sans-serif",background:"rgba(255,255,255,.04)",border:`1px solid ${inputError?"#7f1d1d":"#1e1e2e"}`,borderRadius:12,color:"#e8e4dc",lineHeight:1.4 }} />
                 {input.trim() && (() => {
                   const w = input.trim().split(/\s+/).filter(Boolean).length;
