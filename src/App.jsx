@@ -205,6 +205,15 @@ const getMaxDiff = r => r < 400 ? 2 : r < 900 ? 3 : r < 2500 ? 4 : 5;
 const loadSt = () => { try { const s = localStorage.getItem("da_v4"); return s ? JSON.parse(s) : null; } catch { return null; } };
 const saveSt = s => { try { localStorage.setItem("da_v4", JSON.stringify(s)); } catch {} };
 
+// Daily challenge: one deterministic topic per calendar day (same for everyone, changes at local midnight)
+const dayKey = (d = new Date()) => `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+function dailyTopic(d = new Date()) {
+  // Hash the day string → stable index into the full topic list
+  const key = dayKey(d);
+  let h = 0; for (let i = 0; i < key.length; i++) { h = (h * 31 + key.charCodeAt(i)) >>> 0; }
+  return ALL_TOPICS[h % ALL_TOPICS.length];
+}
+
 function pickTopics(rating, exclude = []) {
   const max = getMaxDiff(rating), sh = a => [...a].sort(() => Math.random() - 0.5);
   const full = ALL_TOPICS.filter(t => t.d <= max);
@@ -409,6 +418,9 @@ export default function App() {
   const [prevRating, setPrev]     = useState(null);
   const [trophies, setTrophies]   = useState(saved?.trophies ?? []);
   const [pinned, setPinned]       = useState(saved?.pinned ?? []);
+  // { day: "YYYY-M-D", best: <avg score> } — best avg achieved on today's daily challenge
+  const [dailyBest, setDailyBest] = useState(() => (saved?.dailyBest?.day === dayKey() ? saved.dailyBest : null));
+  const [isDaily, setIsDaily]     = useState(false);
   const [viewDebate, setViewDebate] = useState(null); // a past debate opened for review
   const [topics, setTopics]       = useState(() => pickTopics(saved?.rating ?? 0));
   const [stage, setStage]         = useState("setup");
@@ -429,6 +441,7 @@ export default function App() {
   const [round, setRound]         = useState(1);
   const [scores, setScores]       = useState([]);
   const [offTopicCount, setOffTopicCount] = useState(0);
+  const [tellsCaught, setTellsCaught] = useState(0);
   const [inputError, setInputError] = useState("");
   const [fallacies, setFallacies] = useState({});
   const [summary, setSummary]     = useState("");
@@ -473,7 +486,7 @@ export default function App() {
   const comboMult = streak >= 3 ? 1.15 : 1;
   const maxHints = LEVEL_HINTS[level.name] ?? 0;
 
-  useEffect(() => { saveSt({ rating, trophies, bonusNext, pinned }); }, [rating, trophies, bonusNext, pinned]);
+  useEffect(() => { saveSt({ rating, trophies, bonusNext, pinned, dailyBest }); }, [rating, trophies, bonusNext, pinned, dailyBest]);
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [msgs, loading, summary]);
 
   const refresh = () => { const next = pickTopics(rating, [...recentRef.current, ...topics.map(t => t.label)]); next.forEach(t => { recentRef.current.push(t.label); }); const cap = Math.max(0, ALL_TOPICS.filter(t => t.d <= getMaxDiff(rating)).length - 4); if (recentRef.current.length > cap) recentRef.current = recentRef.current.slice(recentRef.current.length - cap); setTopics(next); setTopic(""); setCustom(""); setShuffleKey(k => k + 1); };
@@ -490,7 +503,13 @@ export default function App() {
       ? "IMPORTANT: Use simple everyday language. Occasionally make a logical mistake or leave a weak point the user could challenge. No jargon."
       : level.name === "Debater" ? "Use clear arguments. Occasionally leave a small logical gap."
       : "Argue sharply and rigorously.";
-    let base = `You are a debate opponent. Topic: "${act}". You argue ${cs === "for" ? "in favor of" : "against"} this. The user argues ${side === "for" ? "in favor of" : "against"} it.\n${INTENSITY[intensity].prompt}${td ? " Style: " + td + "." : ""}\n${diff}\nRules: Never break character. Never fully concede. 2-4 sentences only. No bullet points.`;
+    // "Tells": at higher levels, occasionally plant ONE deliberately exploitable weak premise for the user to catch.
+    const tellLevels = ["Rhetorician", "Sophist", "Orator", "Philosopher King"];
+    const plantTell = tellLevels.includes(level.name) && Math.random() < 0.4;
+    const tellInstr = plantTell
+      ? " TACTIC: In this reply, deliberately slip in ONE subtly flawed premise, overgeneralization, or unsupported leap — woven in naturally, never flagged. A sharp opponent should be able to catch and exploit it. Keep the rest of your argument strong."
+      : "";
+    let base = `You are a debate opponent. Topic: "${act}". You argue ${cs === "for" ? "in favor of" : "against"} this. The user argues ${side === "for" ? "in favor of" : "against"} it.\n${INTENSITY[intensity].prompt}${td ? " Style: " + td + "." : ""}\n${diff}${tellInstr}\nRules: Never break character. Never fully concede. 2-4 sentences only. No bullet points.`;
     // Draw handling — depends on how strong the user's arguments have been
     const strongRound = scores.filter(s => s >= 7).length;
     const avgSoFar = scores.length ? scores.reduce((x, y) => x + y, 0) / scores.length : 0;
@@ -509,20 +528,24 @@ export default function App() {
     if (found.length) setFallacies(p => ({ ...p, [idx]: found }));
   };
 
-  const grade = async text => {
+  const grade = async (text, lastClaude = "") => {
     const words = text.trim().split(/\s+/).filter(Boolean).length;
     try {
-      const r = await callClaude([{ role: "user", content: `Topic being debated: "${act}".\nThe user argues ${side === "for" ? "in favor of" : "against"} it.\n\nTheir argument:\n"${text}"\n\nReturn ONLY a JSON object, nothing else: {"score": <integer 1-10>, "onTopic": <true|false>}. onTopic is false if the argument ignores the topic, changes the subject, or doesn't actually engage the debate.` }], `Impartial debate judge. Reply with ONLY raw JSON, no markdown. Rubric for score: 1-3 off-topic or no real argument; 4-5 weak or generic; 6-7 solid with reasoning; 8 strong with evidence or examples; 9 excellent — clear logic plus concrete evidence; 10 exceptional. Genuinely strong arguments deserve 9s.`);
+      const tellAsk = lastClaude
+        ? `\n\nClaude's previous argument was:\n"${lastClaude}"\n\nAlso judge "caughtWeakness": true ONLY if the user's argument directly identifies and exploits a genuine logical flaw, unsupported premise, or overgeneralization in Claude's previous argument (not just disagreeing — actually pointing out why a specific claim of Claude's fails).`
+        : "";
+      const r = await callClaude([{ role: "user", content: `Topic being debated: "${act}".\nThe user argues ${side === "for" ? "in favor of" : "against"} it.\n\nTheir argument:\n"${text}"${tellAsk}\n\nReturn ONLY a JSON object, nothing else: {"score": <integer 1-10>, "onTopic": <true|false>${lastClaude ? ', "caughtWeakness": <true|false>' : ""}}. onTopic is false if the argument ignores the topic, changes the subject, or doesn't actually engage the debate.` }], `Impartial debate judge. Reply with ONLY raw JSON, no markdown. Rubric for score: 1-3 off-topic or no real argument; 4-5 weak or generic; 6-7 solid with reasoning; 8 strong with evidence or examples; 9 excellent — clear logic plus concrete evidence; 10 exceptional. Genuinely strong arguments deserve 9s.`);
       let parsed; try { parsed = JSON.parse(r.replace(/```json|```/g, "").trim()); } catch { parsed = {}; }
       let n = parseInt(parsed.score); if (isNaN(n)) n = 5;
       const onTopic = parsed.onTopic !== false;
+      const caughtWeakness = parsed.caughtWeakness === true;
       // Slight length reward: long, developed arguments edge up by up to +1
       if (words >= 60) n += 1; else if (words >= 35) n += 0.5;
       // Off-topic penalty
       if (!onTopic) n = Math.min(n, 3) - 1;
       n = Math.min(10, Math.max(1, Math.round(n)));
-      return { score: n, onTopic };
-    } catch { return { score: 5, onTopic: true }; }
+      return { score: n, onTopic, caughtWeakness };
+    } catch { return { score: 5, onTopic: true, caughtWeakness: false }; }
   };
 
   const getHint = async () => {
@@ -555,7 +578,7 @@ export default function App() {
       setFallacies({}); setSummary(""); setPrev(null); setDebateStarted(false);
       setTimerActive(false); setTimeouts(0); setHint(""); setAutoLost(false);
       setPendingResult(null); setPointsRevealed(false);
-      setOffTopicCount(0); setInputError("");
+      setOffTopicCount(0); setInputError(""); setTellsCaught(0);
       setDrawResult(false); setSummaryTip("");
     }, 950);
     setTimeout(() => setTransitioning(false), 2000);
@@ -566,6 +589,76 @@ export default function App() {
     if (swap) setSide(s => (s === "for" ? "against" : "for"));
     setInput("");
     enterArena();
+  };
+
+  // Daily challenge: load today's seeded topic, default side FOR, and enter
+  const startDaily = () => {
+    const dt = dailyTopic();
+    setTopic(dt.label); setCustom(""); setSpeedRound(false);
+    if (!side) setSide("for");
+    setIsDaily(true);
+    enterArena();
+  };
+
+  // Generate a shareable result card (PNG) from the finished debate and download it
+  const shareCard = () => {
+    const r = pendingResult; if (!r) return;
+    const W = 1080, H = 1080, c = document.createElement("canvas");
+    c.width = W; c.height = H; const x = c.getContext("2d");
+    // Background
+    const bg = x.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, "#0a0a0f"); bg.addColorStop(0.5, "#12101c"); bg.addColorStop(1, "#0a0a0f");
+    x.fillStyle = bg; x.fillRect(0, 0, W, H);
+    // Radial glow
+    const rg = x.createRadialGradient(W/2, 360, 40, W/2, 360, 620);
+    rg.addColorStop(0, "rgba(201,168,76,0.14)"); rg.addColorStop(1, "rgba(201,168,76,0)");
+    x.fillStyle = rg; x.fillRect(0, 0, W, H);
+    // Border frame
+    x.strokeStyle = "#c9a84c55"; x.lineWidth = 3; x.strokeRect(40, 40, W-80, H-80);
+    x.textAlign = "center";
+    // Header
+    x.fillStyle = "#c9a84c"; x.font = "700 34px Georgia, serif";
+    x.fillText("⚔  DEBATE ARENA", W/2, 140);
+    // Level badge
+    x.fillStyle = "#a89eed"; x.font = "600 30px Arial";
+    x.fillText(r.newLevel?.name?.toUpperCase() || level.name.toUpperCase(), W/2, 210);
+    // Topic (wrapped)
+    x.fillStyle = "#f0ece4"; x.font = "700 46px Georgia, serif";
+    const words = act.split(" "); let line = "", y = 340; const maxW = W - 200; const lines = [];
+    for (const w of words) { const t = line ? line + " " + w : w; if (x.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; }
+    if (line) lines.push(line);
+    const shown = lines.slice(0, 4);
+    for (const ln of shown) { x.fillText(ln, W/2, y); y += 60; }
+    // Side
+    x.fillStyle = "#6b6860"; x.font = "500 28px Arial";
+    x.fillText(`I argued ${side === "for" ? "FOR" : "AGAINST"}`, W/2, y + 30);
+    // Big score
+    const avg = r.avg ?? 0;
+    const col = avg >= 8 ? "#4ade80" : avg >= 6 ? "#c9a84c" : avg >= 4 ? "#fb923c" : "#f87171";
+    x.fillStyle = col; x.font = "900 200px Arial";
+    x.fillText(`${avg}`, W/2, 760);
+    x.fillStyle = "#6b6860"; x.font = "500 40px Arial";
+    x.fillText("/ 10  avg argument score", W/2, 820);
+    // Result line
+    let verdict = r.draw ? "HONORABLE DRAW" : r.deranked ? "DERANKED" : r.delta > 0 ? `+${r.delta} RP` : `${r.delta} RP`;
+    x.fillStyle = r.delta > 0 ? "#4ade80" : r.draw ? "#c9a84c" : "#f87171"; x.font = "800 48px Arial";
+    x.fillText(verdict, W/2, 910);
+    // Badges row (combo / tells)
+    const tags = [];
+    if (r.streak >= 3) tags.push(`🔥 ${r.streak} combo`);
+    if (tellsCaught > 0) tags.push(`🎯 ${tellsCaught} caught`);
+    if (isDaily) tags.push("⭐ Daily");
+    if (tags.length) { x.fillStyle = "#a89eed"; x.font = "600 30px Arial"; x.fillText(tags.join("    "), W/2, 975); }
+    // Footer
+    x.fillStyle = "#5a5868"; x.font = "500 24px Arial";
+    x.fillText("debate-arena-gilt.vercel.app", W/2, 1030);
+    // Download
+    c.toBlob(b => {
+      if (!b) return;
+      const url = URL.createObjectURL(b), a = document.createElement("a");
+      a.href = url; a.download = `debate-${avg}-of-10.png`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, "image/png");
   };
 
   // Return to a finished debate to review feedback, without wiping it
@@ -609,19 +702,23 @@ export default function App() {
     const newH = [...hist, { role: "user", content: timedOut ? "[I ran out of time and didn't respond]" : txt }];
     setHist(newH); setRound(r => r + 1); setLoading(true);
 
-    // timeout = automatic low score; otherwise grade returns {score, onTopic}
-    const gradePromise = timedOut ? Promise.resolve({ score: 2, onTopic: true }) : grade(txt);
+    // timeout = automatic low score; otherwise grade returns {score, onTopic, caughtWeakness}
+    const lastClaudeMsg = [...hist].reverse().find(m => m.role === "assistant")?.content || "";
+    const gradePromise = timedOut ? Promise.resolve({ score: 2, onTopic: true }) : grade(txt, lastClaudeMsg);
     const [g, replyRaw] = await Promise.all([gradePromise, callClaude(newH, buildSys(timedOut)).catch(e => "Error: " + e.message)]);
     const isDraw = /\[DRAW\]/i.test(replyRaw);
     const reply = replyRaw.replace(/\[DRAW\]/ig, "").trim();
-    const s = g.score;
+    // Catching a planted weakness rewards +1 on the round (capped) and is tracked for end-of-debate
+    const caught = !!g.caughtWeakness;
+    if (caught) setTellsCaught(c => c + 1);
+    const s = Math.min(10, g.score + (caught ? 1 : 0));
     if (!timedOut && !g.onTopic) setOffTopicCount(c => c + 1);
     setScores(x => [...x, s]);
     setHist([...newH, { role: "assistant", content: reply }]);
     setMsgs(m => {
       const copy = m.map(x => ({ ...x, fresh: false }));
       for (let j = copy.length - 1; j >= 0; j--) {
-        if (copy[j].role === "user" && copy[j].score == null) { copy[j] = { ...copy[j], score: s, offTopic: !timedOut && !g.onTopic }; break; }
+        if (copy[j].role === "user" && copy[j].score == null) { copy[j] = { ...copy[j], score: s, offTopic: !timedOut && !g.onTopic, caught }; break; }
       }
       return [...copy, { role: "claude", text: reply, fresh: true }];
     });
@@ -679,6 +776,12 @@ export default function App() {
       bonusApplied, bonusEarned, rounds: round, roundsPlayed, eligibleForGains, draw, comboBonus, streak,
     });
     setPointsRevealed(false);
+
+    // Daily challenge: record best average for today
+    if (isDaily && participated) {
+      const todayAvg = Math.round(a * 10) / 10;
+      setDailyBest(prev => (prev && prev.day === dayKey() && prev.best >= todayAvg) ? prev : { day: dayKey(), best: todayAvg });
+    }
 
     if (!participated) {
       // No arguments were made — don't ask the API to invent feedback
@@ -905,6 +1008,19 @@ export default function App() {
             <span style={{ fontSize:11,fontWeight:700,letterSpacing:".14em",textTransform:"uppercase",color:G }}>Pick Your Battleground</span>
             <button onClick={refresh} className="hov" style={{ background:"rgba(255,255,255,.04)",border:BDR,borderRadius:7,padding:"5px 14px",fontSize:15,color:"#6b6860",cursor:"pointer" }}><span key={shuffleKey} style={{ display:"inline-block",animation:"spin360 .5s ease" }}>↻</span></button>
           </div>
+          {(() => { const dt = dailyTopic(); const doneToday = dailyBest && dailyBest.day === dayKey(); return (
+            <button onClick={startDaily} className="bhov" style={{ width:"100%",textAlign:"left",padding:"14px 16px",borderRadius:12,cursor:"pointer",
+              background:"linear-gradient(135deg,#1a1530,#221a3d)",border:"1px solid #6058c8",boxShadow:"0 0 20px #534AB722",position:"relative",overflow:"hidden" }}>
+              <div style={{ position:"absolute",top:0,left:0,width:3,height:"100%",background:"linear-gradient(180deg,#8b7ff0,transparent)" }} />
+              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:4 }}>
+                <span style={{ fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"#a89eed" }}>⭐ Daily Challenge</span>
+                {doneToday
+                  ? <span style={{ fontSize:11,fontWeight:700,color:"#4ade80" }}>Best today: {dailyBest.best}/10</span>
+                  : <span style={{ fontSize:11,fontWeight:600,color:"#6b6860" }}>New each day</span>}
+              </div>
+              <div style={{ fontSize:14,fontWeight:600,color:"#e8e4dc",lineHeight:1.4 }}>{dt.label}</div>
+            </button>
+          ); })()}
           {topics.map((t, ti) => (
             <button key={`${shuffleKey}-${t.label}`} className="hov" onClick={() => { setTopic(t.label); setCustom(""); }}
               style={{ flex:1,background:topic===t.label&&!custom?"linear-gradient(135deg,#1e1c2e,#252040)":"rgba(255,255,255,.025)",border:topic===t.label&&!custom?"1px solid #6058c8":BDR,borderRadius:12,padding:"16px 18px",color:topic===t.label&&!custom?"#c0b8f0":"#a0a098",cursor:"pointer",display:"flex",flexDirection:"column",textAlign:"left",position:"relative",overflow:"hidden",boxShadow:topic===t.label&&!custom?"0 0 24px #534AB722":"none",animation:`shuffleIn .5s cubic-bezier(.2,.8,.2,1) ${ti*0.07}s both` }}>
@@ -1024,7 +1140,7 @@ export default function App() {
             </button>
           )}
           {!(msgs.length > 0 && debateStarted && !summary) && (
-          <button disabled={!act || !side} className={act && side ? "bhov" : ""} onClick={enterArena}
+          <button disabled={!act || !side} className={act && side ? "bhov" : ""} onClick={() => { setIsDaily(false); enterArena(); }}
             style={{ width:"100%",padding:"20px",background:act&&side?`linear-gradient(135deg,${G},#b8962e)`:"rgba(255,255,255,.04)",color:act&&side?"#0a0a0f":"#3a3a4e",border:act&&side?"none":BDR,borderRadius:12,fontSize:17,fontWeight:700,letterSpacing:".06em",cursor:act&&side?"pointer":"not-allowed",transition:"all .2s",boxShadow:act&&side?`0 4px 24px ${G}44`:"none" }}>
             {act && side ? "⚔️  ENTER THE ARENA" : "Select a topic & side first"}
           </button>
@@ -1120,6 +1236,7 @@ export default function App() {
                     <div style={{ width:`${(m.score/10)*80}px`,height:3,background:sc(m.score),borderRadius:2,transition:"width .6s ease",boxShadow:`0 0 6px ${sc(m.score)}88` }} />
                     <span style={{ fontSize:13,color:sc(m.score),fontWeight:700 }}>{m.score}/10</span>
                     {m.offTopic && <span style={{ fontSize:12,padding:"2px 9px",background:"#2d1515",border:"1px solid #7f1d1d",borderRadius:20,color:"#f87171",fontWeight:600 }}>⤳ off-topic</span>}
+                    {m.caught && <span style={{ fontSize:12,padding:"2px 9px",background:"#1a1530",border:"1px solid #6058c8",borderRadius:20,color:"#a89eed",fontWeight:600 }}>🎯 weakness caught +1</span>}
                   </div>
                 )}
                 {m.role === "user" && fallacies[i] && (
@@ -1163,6 +1280,7 @@ export default function App() {
                   <span style={{ fontSize:14,color:"#6b6860" }}>Avg score: <span style={{ color:sc(pendingResult?.avg ?? 0),fontWeight:700 }}>{pendingResult?.avg ?? "—"}/10</span></span>
                   {pointsRevealed
                     ? <div style={{ display:"flex",gap:8,marginLeft:"auto",flexWrap:"wrap" }}>
+                        <button onClick={shareCard} className="bhov" style={{ padding:"10px 18px",background:"rgba(201,168,76,0.1)",color:G,border:`1px solid ${G}55`,borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer" }}>📤 Share Result</button>
                         <button onClick={() => rematch(false)} className="bhov" style={{ padding:"10px 18px",background:"rgba(168,158,237,0.1)",color:"#a89eed",border:"1px solid #534AB755",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer" }}>↻ Rematch</button>
                         <button onClick={() => rematch(true)} className="bhov" style={{ padding:"10px 18px",background:"rgba(168,158,237,0.1)",color:"#a89eed",border:"1px solid #534AB755",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer" }}>⇄ Swap Sides</button>
                         <button onClick={() => setStage("setup")} className="bhov" style={{ padding:"10px 24px",background:`linear-gradient(135deg,${G},#b8962e)`,color:"#0a0a0f",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer" }}>New Debate →</button>
