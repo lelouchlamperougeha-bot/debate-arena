@@ -272,14 +272,25 @@ function Typewriter({ text, onTick }) {
   const [shown, setShown] = useState("");
   useEffect(() => {
     setShown("");
-    let i = 0;
-    const id = setInterval(() => {
-      i += 2;
-      setShown(text.slice(0, i));
+    if (!text) return;
+    const CPS = 125; // characters per second (≈ the old 2 chars / 16ms)
+    const start = performance.now();
+    let raf, done = false;
+    const finish = () => { if (done) return; done = true; setShown(text); if (onTick) onTick(); if (raf) cancelAnimationFrame(raf); };
+    const step = now => {
+      // Time-based: position is derived from real elapsed time, so a throttled
+      // background tab can't slow it down — on refocus it catches up instantly.
+      const i = Math.floor(((now - start) / 1000) * CPS);
+      setShown(text.slice(0, Math.min(i, text.length)));
       if (onTick) onTick();
-      if (i >= text.length) clearInterval(id);
-    }, 16);
-    return () => clearInterval(id);
+      if (i >= text.length) { done = true; return; }
+      raf = requestAnimationFrame(step);
+    };
+    // If the tab is hidden mid-type, skip straight to the full text (no stalling).
+    const onVis = () => { if (document.hidden) finish(); };
+    document.addEventListener("visibilitychange", onVis);
+    if (document.hidden) finish(); else raf = requestAnimationFrame(step);
+    return () => { if (raf) cancelAnimationFrame(raf); document.removeEventListener("visibilitychange", onVis); };
   }, [text]);
   return <>{shown}<span style={{ opacity: shown.length < text.length ? 1 : 0, color: "#c9a84c" }}>▍</span></>;
 }
@@ -762,6 +773,10 @@ export default function App() {
     if (bonusApplied) d *= 2;
     const bonusEarned = eligibleForGains && !lost && a >= 9;
 
+    // Speed Round: higher stakes — points are doubled in BOTH directions (gains and losses)
+    const speedDoubled = speedRound && d !== 0;
+    if (speedDoubled) d *= 2;
+
     const old = rating, nw = Math.max(0, old + d);
     const ol = getLevel(old), nl = getLevel(nw);
 
@@ -769,7 +784,7 @@ export default function App() {
     setPendingResult({
       delta: d, oldRating: old, newRating: nw, avg: Math.round(a * 10) / 10,
       levelChanged: nl.name !== ol.name, newLevel: nl, deranked: nw < old,
-      bonusApplied, bonusEarned, rounds: round, roundsPlayed, eligibleForGains, draw, comboBonus, streak,
+      bonusApplied, bonusEarned, rounds: round, roundsPlayed, eligibleForGains, draw, comboBonus, streak, speedDoubled,
     });
     setPointsRevealed(false);
 
@@ -1029,7 +1044,7 @@ export default function App() {
             const dt = dailyTopic();
             const doneToday = dailyBest && dailyBest.day === dayKey();
             if (!dailyUnlocked) return (
-              <div style={{ width:"100%",padding:"14px 16px",borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px dashed #3a3a4e",display:"flex",alignItems:"center",gap:8 }}>
+              <div style={{ width:"100%",padding:"14px 16px",borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px dashed #3a3a4e",display:"flex",alignItems:"center",justifyContent:"center",gap:8 }}>
                 <span style={{ fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"#6b6860" }}>🔒 Daily Challenge — Locked</span>
                 <span className="info-tip" tabIndex={0} aria-label="Finish any match with a positive point gain to unlock today's daily challenge. Resets each day."
                   onMouseEnter={() => setLockTipOpen(true)} onMouseLeave={() => setLockTipOpen(false)}
@@ -1141,7 +1156,7 @@ export default function App() {
               border:speedRound?"1px solid #f9731688":BDR,boxShadow:speedRound?"0 0 18px #f9731622":"none" }}>
             <span style={{ display:"flex",flexDirection:"column",textAlign:"left" }}>
               <span style={{ fontSize:14,fontWeight:700,color:speedRound?"#fb923c":"#c8c4bc" }}>⚡ Speed Round</span>
-              <span style={{ fontSize:11,color:"#6b6860" }}>30s timer · {speedRound?8:"8"}-word minimum</span>
+              <span style={{ fontSize:11,color:"#6b6860" }}>30s timer · 8-word min · points doubled both ways</span>
             </span>
             <span style={{ width:42,height:24,borderRadius:20,padding:2,background:speedRound?"#f97316":"#2a2a3e",transition:"all .2s",flexShrink:0 }}>
               <span style={{ display:"block",width:20,height:20,borderRadius:"50%",background:"#fff",transform:speedRound?"translateX(18px)":"translateX(0)",transition:"all .2s" }} />
@@ -1249,7 +1264,6 @@ export default function App() {
                     <div style={{ width:`${(m.score/10)*80}px`,height:3,background:sc(m.score),borderRadius:2,transition:"width .6s ease",boxShadow:`0 0 6px ${sc(m.score)}88` }} />
                     <span style={{ fontSize:13,color:sc(m.score),fontWeight:700 }}>{m.score}/10</span>
                     {m.offTopic && <span style={{ fontSize:12,padding:"2px 9px",background:"#2d1515",border:"1px solid #7f1d1d",borderRadius:20,color:"#f87171",fontWeight:600 }}>⤳ off-topic</span>}
-                    {m.caught && <span style={{ fontSize:12,padding:"2px 9px",background:"#1a1530",border:"1px solid #6058c8",borderRadius:20,color:"#a89eed",fontWeight:600 }}>🎯 weakness caught +1</span>}
                   </div>
                 )}
                 {m.role === "user" && fallacies[i] && (
@@ -1462,6 +1476,7 @@ export default function App() {
                   </div>
                   {pendingResult.bonusApplied && <div style={{ fontSize:12,color:G,fontWeight:700,marginTop:5,animation:"msgIn .5s ease .3s both" }}>✨ 2x bonus applied!</div>}
                   {pendingResult.comboBonus && <div style={{ fontSize:12,color:"#fb923c",fontWeight:700,marginTop:5,animation:"msgIn .5s ease .35s both" }}>🔥 {pendingResult.streak} combo · +15%</div>}
+                  {pendingResult.speedDoubled && <div style={{ fontSize:12,color:"#fb923c",fontWeight:700,marginTop:5,animation:"msgIn .5s ease .4s both" }}>⚡ Speed Round · points doubled</div>}
                   {pendingResult.bonusEarned && <div style={{ fontSize:12,color:"#4ade80",fontWeight:600,marginTop:5,animation:"msgIn .5s ease .4s both" }}>9+ avg — next debate is 2x!</div>}
                   {pendingResult.delta===0 && !pendingResult.eligibleForGains && <div style={{ fontSize:12,color:"#6b6860",marginTop:5 }}>Under 5 rounds — no gain</div>}
                 </div>
