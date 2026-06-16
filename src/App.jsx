@@ -885,6 +885,8 @@ export default function App() {
     .hint-loading{background:linear-gradient(90deg,#534AB733 25%,#a89eed44 50%,#534AB733 75%);background-size:200% 100%;animation:shimmer 1.2s linear infinite}
     input:focus,textarea:focus{outline:none;border-color:#c9a84c!important;box-shadow:0 0 0 3px #c9a84c18!important}
     button:focus-visible,[role="button"]:focus-visible,.hov:focus-visible{outline:2px solid #c9a84c!important;outline-offset:2px!important;border-radius:10px}
+    .info-tip:hover{border-color:#a89eed;color:#a89eed}
+    .info-tip:hover .info-bubble,.info-tip:focus .info-bubble{opacity:1}
     ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px}
   `;
 
@@ -1028,11 +1030,15 @@ export default function App() {
             const dt = dailyTopic();
             const doneToday = dailyBest && dailyBest.day === dayKey();
             if (!dailyUnlocked) return (
-              <div style={{ width:"100%",padding:"14px 16px",borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px dashed #3a3a4e",position:"relative",overflow:"hidden" }}>
-                <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:4 }}>
-                  <span style={{ fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"#6b6860" }}>🔒 Daily Challenge — Locked</span>
-                </div>
-                <div style={{ fontSize:13,color:"#8a8680",lineHeight:1.5 }}>Win points in a debate first. Finish any match with a positive point gain to unlock today's daily challenge. Resets each day.</div>
+              <div style={{ width:"100%",padding:"14px 16px",borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px dashed #3a3a4e",display:"flex",alignItems:"center",gap:8 }}>
+                <span style={{ fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"#6b6860" }}>🔒 Daily Challenge — Locked</span>
+                <span className="info-tip" tabIndex={0} aria-label="Win points in a debate first. Finish any match with a positive point gain to unlock today's daily challenge. Resets each day."
+                  style={{ position:"relative",display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",border:"1px solid #6b6860",color:"#8a8680",fontSize:10,fontWeight:700,cursor:"help",flexShrink:0,fontFamily:"Georgia,serif" }}>
+                  i
+                  <span className="info-bubble" style={{ position:"absolute",bottom:"calc(100% + 8px)",left:"50%",transform:"translateX(-50%)",width:220,padding:"10px 12px",borderRadius:8,background:"#16141f",border:"1px solid #3a3a4e",boxShadow:"0 6px 20px rgba(0,0,0,.5)",fontSize:12,lineHeight:1.5,color:"#c8c4bc",fontWeight:400,letterSpacing:"normal",textTransform:"none",zIndex:20,pointerEvents:"none",opacity:0,transition:"opacity .15s ease" }}>
+                    Win points in a debate first. Finish any match with a positive point gain to unlock today's daily challenge. Resets each day.
+                  </span>
+                </span>
               </div>
             );
             return (
