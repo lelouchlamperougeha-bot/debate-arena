@@ -1033,7 +1033,7 @@ export default function App() {
               <div style={{ width:"100%",padding:"14px 16px",borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px dashed #3a3a4e",display:"flex",alignItems:"center",gap:8 }}>
                 <span style={{ fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:"#6b6860" }}>🔒 Daily Challenge — Locked</span>
                 <span className="info-tip" tabIndex={0} aria-label="Win points in a debate first. Finish any match with a positive point gain to unlock today's daily challenge. Resets each day."
-                  style={{ position:"relative",display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",border:"1px solid #6b6860",color:"#8a8680",fontSize:10,fontWeight:700,cursor:"help",flexShrink:0,fontFamily:"Georgia,serif" }}>
+                  style={{ position:"relative",display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",border:"1px solid #6b6860",color:"#8a8680",fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:"Georgia,serif" }}>
                   i
                   <span className="info-bubble" style={{ position:"absolute",bottom:"calc(100% + 8px)",left:"50%",transform:"translateX(-50%)",width:220,padding:"10px 12px",borderRadius:8,background:"#16141f",border:"1px solid #3a3a4e",boxShadow:"0 6px 20px rgba(0,0,0,.5)",fontSize:12,lineHeight:1.5,color:"#c8c4bc",fontWeight:400,letterSpacing:"normal",textTransform:"none",zIndex:20,pointerEvents:"none",opacity:0,transition:"opacity .15s ease" }}>
                     Win points in a debate first. Finish any match with a positive point gain to unlock today's daily challenge. Resets each day.
